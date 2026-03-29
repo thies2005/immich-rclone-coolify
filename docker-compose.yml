@@ -1,0 +1,136 @@
+name: immich
+
+services:
+  rclone:
+    build:
+      context: .
+      dockerfile: Dockerfile.rclone
+      args:
+        RCLONE_REPO: ${RCLONE_REPO:-https://github.com/thies2005/rclone.git}
+        RCLONE_BRANCH: ${RCLONE_BRANCH:-master}
+    container_name: immich-rclone
+    restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      RCLONE_REMOTE_SOURCE: ${RCLONE_REMOTE_SOURCE}
+      RCLONE_MOUNT_TARGET: ${RCLONE_MOUNT_TARGET:-/mnt/external-library}
+      RCLONE_CACHE_DIR: ${RCLONE_CACHE_DIR:-/cache/vfs}
+      RCLONE_VFS_CACHE_MAX_SIZE: ${RCLONE_VFS_CACHE_MAX_SIZE:?RCLONE_VFS_CACHE_MAX_SIZE must be set}
+      RCLONE_VFS_CACHE_MAX_AGE: ${RCLONE_VFS_CACHE_MAX_AGE:-48h}
+      RCLONE_BUFFER_SIZE: ${RCLONE_BUFFER_SIZE:-64M}
+      RCLONE_READ_AHEAD: ${RCLONE_READ_AHEAD:-128M}
+      RCLONE_VFS_CACHE_POLL_INTERVAL: ${RCLONE_VFS_CACHE_POLL_INTERVAL:-30s}
+      RCLONE_DIR_CACHE_TIME: ${RCLONE_DIR_CACHE_TIME:-5m}
+      RCLONE_TRANSFERS: ${RCLONE_TRANSFERS:-2}
+      RCLONE_CHECKERS: ${RCLONE_CHECKERS:-4}
+      RCLONE_RETRIES: ${RCLONE_RETRIES:-5}
+      RCLONE_LOW_LEVEL_RETRIES: ${RCLONE_LOW_LEVEL_RETRIES:-10}
+      RCLONE_TIMEOUT: ${RCLONE_TIMEOUT:-120s}
+      RCLONE_CONTIMEOUT: ${RCLONE_CONTIMEOUT:-30s}
+      RCLONE_NO_CHECKSUM: ${RCLONE_NO_CHECKSUM:-true}
+      RCLONE_EXTRA_MOUNT_ARGS: ${RCLONE_EXTRA_MOUNT_ARGS:-}
+    volumes:
+      - ${RCLONE_HOST_CONFIG_PATH:?RCLONE_HOST_CONFIG_PATH must be set}:/config/rclone:ro
+      - ${RCLONE_HOST_MOUNT_PATH:?RCLONE_HOST_MOUNT_PATH must be set}:${RCLONE_MOUNT_TARGET:-/mnt/external-library}:rshared
+      - ${RCLONE_HOST_CACHE_PATH:?RCLONE_HOST_CACHE_PATH must be set}:${RCLONE_CACHE_DIR:-/cache/vfs}
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 90s
+
+  immich-server:
+    image: ghcr.io/immich-app/immich:${IMMICH_VERSION:-release}
+    container_name: immich-server
+    restart: unless-stopped
+    depends_on:
+      rclone:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${IMMICH_HTTP_PORT:-2283}:2283"
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: api
+    volumes:
+      - ${UPLOAD_HOST_PATH:?UPLOAD_HOST_PATH must be set}:/usr/src/app/upload
+      - ${RCLONE_HOST_MOUNT_PATH:?RCLONE_HOST_MOUNT_PATH must be set}:${RCLONE_MOUNT_TARGET:-/mnt/external-library}:ro,rslave
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2283/api/server-info/ping"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich:${IMMICH_VERSION:-release}
+    container_name: immich-machine-learning
+    restart: unless-stopped
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: machinelearning
+    volumes:
+      - ${UPLOAD_HOST_PATH:?UPLOAD_HOST_PATH must be set}:/usr/src/app/upload
+      - ${ML_CACHE_HOST_PATH:?ML_CACHE_HOST_PATH must be set}:/cache
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  postgres:
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    container_name: immich-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      POSTGRES_USER: ${DB_USERNAME:-immich}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
+    volumes:
+      - ${DB_HOST_PATH:?DB_HOST_PATH must be set}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich} -d ${DB_DATABASE_NAME:-immich}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    container_name: immich-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ${REDIS_HOST_PATH:?REDIS_HOST_PATH must be set}:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
