@@ -76,9 +76,14 @@ Paste these into the Coolify service configuration UI. Most variables have sane 
 
 ## FUSE Mount Point
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `RCLONE_MOUNT_HOST_PATH` | No | `/mnt/immich-external-library` | Host path for the FUSE mount point. Docker creates this directory automatically. The same path is bind-mounted into both rclone (read-write) and immich-server (read-only) with appropriate propagation. |
+The FUSE mount point is fixed in `docker-compose.yml` for Coolify compatibility:
+
+| Path | Purpose |
+|---|---|
+| `/mnt/immich-external-library` | Host bind path used for mount propagation between `rclone` and `immich-server` |
+| `/mnt/external-library` | In-container mount path used by Immich for the external library |
+
+Coolify rejects `${...}` interpolation inside Docker volume targets and bind sources, so these paths are intentionally hard-coded.
 
 ---
 

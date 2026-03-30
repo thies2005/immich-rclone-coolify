@@ -6,13 +6,28 @@ warn()  { echo "[entrypoint] WARNING: $*" >&2; }
 fatal() { echo "[entrypoint] ERROR: $*" >&2; exit 1; }
 
 INTERNXT_REMOTE_NAME="${INTERNXT_REMOTE_NAME:-MyInternxt}"
-: "${INTERNXT_EMAIL:?INTERNXT_EMAIL must be set}"
-: "${INTERNXT_PASSWORD:?INTERNXT_PASSWORD must be set}"
+
+if [ -z "${INTERNXT_EMAIL:-}" ]; then
+    fatal "INTERNXT_EMAIL must be set. Add this environment variable in Coolify UI."
+fi
+
+if [ -z "${INTERNXT_PASSWORD:-}" ]; then
+    fatal "INTERNXT_PASSWORD must be set. Add this environment variable in Coolify UI."
+fi
+
 INTERNXT_TOTP_SECRET="${INTERNXT_TOTP_SECRET:-}"
 
-: "${RCLONE_MOUNT_TARGET:?RCLONE_MOUNT_TARGET must be set (e.g. /mnt/external-library)}"
-: "${RCLONE_CACHE_DIR:?RCLONE_CACHE_DIR must be set (e.g. /cache/vfs)}"
-: "${RCLONE_VFS_CACHE_MAX_SIZE:?RCLONE_VFS_CACHE_MAX_SIZE must be set (e.g. 8G). Refusing to start without a hard cache limit.}"
+if [ -z "${RCLONE_MOUNT_TARGET:-}" ]; then
+    fatal "RCLONE_MOUNT_TARGET must be set (e.g. /mnt/external-library)."
+fi
+
+if [ -z "${RCLONE_CACHE_DIR:-}" ]; then
+    fatal "RCLONE_CACHE_DIR must be set (e.g. /cache/vfs)."
+fi
+
+if [ -z "${RCLONE_VFS_CACHE_MAX_SIZE:-}" ]; then
+    fatal "RCLONE_VFS_CACHE_MAX_SIZE must be set (e.g. 8G). Refusing to start without a hard cache limit."
+fi
 
 CONFIG_DIR="/config/rclone"
 mkdir -p "$CONFIG_DIR"
