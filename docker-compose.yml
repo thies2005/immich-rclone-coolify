@@ -45,7 +45,7 @@ services:
         target: /mnt/external-library
         bind:
           create_host_path: true
-          propagation: shared
+          propagation: rshared
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 30s
@@ -82,7 +82,7 @@ services:
         read_only: true
         bind:
           create_host_path: true
-          propagation: slave
+          propagation: rslave
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2283/api/server/ping"]
       interval: 60s
@@ -117,7 +117,7 @@ services:
         read_only: true
         bind:
           create_host_path: true
-          propagation: slave
+          propagation: rslave
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1"]
       interval: 10s
