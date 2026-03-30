@@ -8,7 +8,6 @@ services:
       args:
         RCLONE_REPO: ${RCLONE_REPO:-https://github.com/thies2005/rclone.git}
         RCLONE_BRANCH: ${RCLONE_BRANCH:-master}
-    container_name: immich-rclone
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN
@@ -46,6 +45,8 @@ services:
         bind:
           create_host_path: true
           propagation: rshared
+    networks:
+      - immich-net
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 30s
@@ -55,7 +56,6 @@ services:
 
   immich-server:
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
-    container_name: immich-server
     restart: unless-stopped
     depends_on:
       rclone:
@@ -83,6 +83,8 @@ services:
         bind:
           create_host_path: true
           propagation: rslave
+    networks:
+      - immich-net
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2283/api/server/ping"]
       interval: 60s
@@ -92,7 +94,6 @@ services:
 
   immich-microservices:
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
-    container_name: immich-microservices
     restart: unless-stopped
     depends_on:
       rclone:
@@ -118,6 +119,8 @@ services:
         bind:
           create_host_path: true
           propagation: rslave
+    networks:
+      - immich-net
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1"]
       interval: 10s
@@ -127,7 +130,6 @@ services:
 
   immich-machine-learning:
     image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2}
-    container_name: immich-machine-learning
     restart: unless-stopped
     environment:
       DB_HOSTNAME: postgres
@@ -140,6 +142,8 @@ services:
     volumes:
       - upload_data:/usr/src/app/upload
       - ml_cache:/cache
+    networks:
+      - immich-net
     deploy:
       resources:
         limits:
@@ -147,7 +151,6 @@ services:
 
   postgres:
     image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
-    container_name: immich-postgres
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -155,6 +158,8 @@ services:
       POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - immich-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich} -d ${DB_DATABASE_NAME:-immich}"]
       interval: 30s
@@ -168,11 +173,12 @@ services:
 
   redis:
     image: docker.io/valkey/valkey:9@sha256:3eeb09785cd61ec8e3be35f8804c8892080f3ca21934d628abc24ee4ed1698f6
-    container_name: immich-redis
     restart: unless-stopped
     command: valkey-server --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
+    networks:
+      - immich-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -183,6 +189,10 @@ services:
       resources:
         limits:
           memory: 512M
+
+networks:
+  immich-net:
+    driver: bridge
 
 volumes:
   rclone_config:
