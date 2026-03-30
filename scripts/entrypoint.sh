@@ -83,11 +83,15 @@ fi
 
 mkdir -p "${RCLONE_MOUNT_TARGET}" "${RCLONE_CACHE_DIR}"
 
+mount --make-shared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
+
 if mountpoint -q "${RCLONE_MOUNT_TARGET}" 2>/dev/null; then
     log "Stale mount detected at ${RCLONE_MOUNT_TARGET} — cleaning up..."
     fusermount -uz "${RCLONE_MOUNT_TARGET}" 2>/dev/null || umount -l "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
     sleep 1
 fi
+
+mount --make-shared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
 
 CHECKSUM_FLAG=""
 if [ "${RCLONE_NO_CHECKSUM}" = "true" ]; then
