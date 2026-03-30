@@ -52,13 +52,6 @@ log "Generating rclone.conf for remote '${INTERNXT_REMOTE_NAME}'..."
 chmod 600 "$CONFIG_DIR/rclone.conf"
 log "rclone.conf written to ${CONFIG_DIR}/rclone.conf"
 
-log "Performing initial authentication with Internxt to generate mnemonic..."
-if rclone config reconnect --config "$CONFIG_DIR/rclone.conf" "${INTERNXT_REMOTE_NAME}"; then
-    log "Authentication successful - mnemonic generated"
-else
-    fatal "Failed to authenticate with Internxt. Check your email, password, and TOTP secret."
-fi
-
 RCLONE_REMOTE_SOURCE="${INTERNXT_REMOTE_NAME}:"
 
 if [ "${RCLONE_VFS_CACHE_MODE:-full}" != "full" ]; then
