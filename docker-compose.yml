@@ -122,11 +122,11 @@ services:
     networks:
       - immich-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:2283/api/server/ping"]
-      interval: 60s
-      timeout: 15s
-      retries: 3
-      start_period: 120s
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 1
+      start_period: 30s
 
   immich-machine-learning:
     image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2}
