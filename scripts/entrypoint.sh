@@ -29,6 +29,13 @@ if [ -z "${RCLONE_VFS_CACHE_MAX_SIZE:-}" ]; then
     fatal "RCLONE_VFS_CACHE_MAX_SIZE must be set (e.g. 8G). Refusing to start without a hard cache limit."
 fi
 
+log "Setting up mount propagation (rshared) on root filesystem..."
+mount --make-rshared / 2>/dev/null || {
+    warn "Failed to make / rshared, trying /mnt and mount target..."
+    mount --make-rshared /mnt 2>/dev/null || true
+}
+mount --make-rshared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
+
 CONFIG_DIR="/config/rclone"
 mkdir -p "$CONFIG_DIR"
 
@@ -83,15 +90,23 @@ fi
 
 mkdir -p "${RCLONE_MOUNT_TARGET}" "${RCLONE_CACHE_DIR}"
 
-mount --make-shared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
-
 if mountpoint -q "${RCLONE_MOUNT_TARGET}" 2>/dev/null; then
     log "Stale mount detected at ${RCLONE_MOUNT_TARGET} — cleaning up..."
-    fusermount -uz "${RCLONE_MOUNT_TARGET}" 2>/dev/null || umount -l "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
+    fusermount -uz "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
     sleep 1
+    if mountpoint -q "${RCLONE_MOUNT_TARGET}" 2>/dev/null; then
+        umount -l "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
+        sleep 1
+    fi
+    if mountpoint -q "${RCLONE_MOUNT_TARGET}" 2>/dev/null; then
+        umount -f "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
+        sleep 1
+    fi
+    if mountpoint -q "${RCLONE_MOUNT_TARGET}" 2>/dev/null; then
+        fatal "Could not unmount stale mount at ${RCLONE_MOUNT_TARGET}. Manual cleanup needed."
+    fi
+    log "Stale mount cleaned up."
 fi
-
-mount --make-shared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
 
 CHECKSUM_FLAG=""
 if [ "${RCLONE_NO_CHECKSUM}" = "true" ]; then

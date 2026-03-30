@@ -1,14 +1,13 @@
 name: immich
 
 services:
-  immich-server:
+  rclone:
     build:
       context: .
-      dockerfile: Dockerfile.immich
+      dockerfile: Dockerfile.rclone
       args:
         RCLONE_REPO: ${RCLONE_REPO:-https://github.com/thies2005/rclone.git}
         RCLONE_BRANCH: ${RCLONE_BRANCH:-master}
-        IMMICH_VERSION: ${IMMICH_VERSION:-v2}
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN
@@ -16,12 +15,6 @@ services:
       - /dev/fuse:/dev/fuse
     security_opt:
       - apparmor:unconfined
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    entrypoint: ["/usr/local/bin/immich-entrypoint.sh"]
     environment:
       INTERNXT_REMOTE_NAME: ${INTERNXT_REMOTE_NAME:-MyInternxt}
       INTERNXT_EMAIL: ${INTERNXT_EMAIL}
@@ -41,6 +34,39 @@ services:
       RCLONE_LOW_LEVEL_RETRIES: ${RCLONE_LOW_LEVEL_RETRIES:-10}
       RCLONE_TIMEOUT: ${RCLONE_TIMEOUT:-120s}
       RCLONE_CONTIMEOUT: ${RCLONE_CONTIMEOUT:-30s}
+      RCLONE_NO_CHECKSUM: ${RCLONE_NO_CHECKSUM:-true}
+      RCLONE_EXTRA_MOUNT_ARGS: ${RCLONE_EXTRA_MOUNT_ARGS:-}
+    volumes:
+      - rclone_config:/config/rclone
+      - rclone_cache:/cache/vfs
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        bind:
+          create_host_path: true
+          propagation: rshared
+    networks:
+      - immich-net
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 10s
+      timeout: 15s
+      retries: 10
+      start_period: 90s
+
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    restart: unless-stopped
+    depends_on:
+      rclone:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      immich-microservices:
+        condition: service_healthy
+    environment:
       DB_HOSTNAME: postgres
       DB_USERNAME: ${DB_USERNAME:-immich}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -50,8 +76,13 @@ services:
       IMMICH_WORKERS_INCLUDE: api
     volumes:
       - upload_data:/usr/src/app/upload
-      - rclone_cache_server:/cache/vfs
-      - rclone_config:/config/rclone
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        read_only: true
+        bind:
+          create_host_path: true
+          propagation: rslave
     networks:
       - immich-net
     healthcheck:
@@ -59,48 +90,19 @@ services:
       interval: 60s
       timeout: 15s
       retries: 3
-      start_period: 180s
+      start_period: 120s
 
   immich-microservices:
-    build:
-      context: .
-      dockerfile: Dockerfile.immich
-      args:
-        RCLONE_REPO: ${RCLONE_REPO:-https://github.com/thies2005/rclone.git}
-        RCLONE_BRANCH: ${RCLONE_BRANCH:-master}
-        IMMICH_VERSION: ${IMMICH_VERSION:-v2}
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
     restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse:/dev/fuse
-    security_opt:
-      - apparmor:unconfined
     depends_on:
+      rclone:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    entrypoint: ["/usr/local/bin/immich-entrypoint.sh"]
     environment:
-      INTERNXT_REMOTE_NAME: ${INTERNXT_REMOTE_NAME:-MyInternxt}
-      INTERNXT_EMAIL: ${INTERNXT_EMAIL}
-      INTERNXT_PASSWORD: ${INTERNXT_PASSWORD}
-      INTERNXT_TOTP_SECRET: ${INTERNXT_TOTP_SECRET}
-      RCLONE_MOUNT_TARGET: ${RCLONE_MOUNT_TARGET:-/mnt/external-library}
-      RCLONE_CACHE_DIR: ${RCLONE_CACHE_DIR:-/cache/vfs}
-      RCLONE_VFS_CACHE_MAX_SIZE: ${RCLONE_VFS_CACHE_MAX_SIZE:-8G}
-      RCLONE_VFS_CACHE_MAX_AGE: ${RCLONE_VFS_CACHE_MAX_AGE:-48h}
-      RCLONE_BUFFER_SIZE: ${RCLONE_BUFFER_SIZE:-64M}
-      RCLONE_READ_AHEAD: ${RCLONE_READ_AHEAD:-128M}
-      RCLONE_VFS_CACHE_POLL_INTERVAL: ${RCLONE_VFS_CACHE_POLL_INTERVAL:-30s}
-      RCLONE_DIR_CACHE_TIME: ${RCLONE_DIR_CACHE_TIME:-5m}
-      RCLONE_TRANSFERS: ${RCLONE_TRANSFERS:-2}
-      RCLONE_CHECKERS: ${RCLONE_CHECKERS:-4}
-      RCLONE_RETRIES: ${RCLONE_RETRIES:-5}
-      RCLONE_LOW_LEVEL_RETRIES: ${RCLONE_LOW_LEVEL_RETRIES:-10}
-      RCLONE_TIMEOUT: ${RCLONE_TIMEOUT:-120s}
-      RCLONE_CONTIMEOUT: ${RCLONE_CONTIMEOUT:-30s}
       DB_HOSTNAME: postgres
       DB_USERNAME: ${DB_USERNAME:-immich}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -110,8 +112,13 @@ services:
       IMMICH_WORKERS_INCLUDE: microservices
     volumes:
       - upload_data:/usr/src/app/upload
-      - rclone_cache_microservices:/cache/vfs
-      - rclone_config:/config/rclone
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        read_only: true
+        bind:
+          create_host_path: true
+          propagation: rslave
     networks:
       - immich-net
     healthcheck:
@@ -119,7 +126,7 @@ services:
       interval: 60s
       timeout: 15s
       retries: 3
-      start_period: 180s
+      start_period: 120s
 
   immich-machine-learning:
     image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2}
@@ -189,8 +196,7 @@ networks:
 
 volumes:
   rclone_config:
-  rclone_cache_server:
-  rclone_cache_microservices:
+  rclone_cache:
   upload_data:
   ml_cache:
   postgres_data:
