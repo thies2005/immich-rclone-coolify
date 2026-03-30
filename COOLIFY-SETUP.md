@@ -10,22 +10,27 @@ All configuration happens through Coolify's UI. No SSH into the host, no manual 
 ┌──────────────────────────────────────────────────────────────┐
 │  Docker (managed by Coolify)                                 │
 │                                                              │
-│  ┌────────────┐   bind mount :shared   ┌──────────────────┐ │
-│  │  rclone     │───────────────────────│  FUSE mount point │ │
-│  │  (FUSE)     │                       │  (auto-created)   │ │
-│  └─────┬───────┘                       └────────┬─────────┘ │
-│        │        bind mount :ro,slave             │           │
-│  ┌─────▼────────────────────────────────────────▼─────────┐ │
-│  │  immich-server  +  immich-microservices                │ │
-│  └───────────────────────────────────────────────────────┘ │
-│                                                             │
-│  Named volumes (Docker-managed, no host paths needed):      │
+│  Each immich container runs its own rclone FUSE mount:       │
+│                                                              │
+│  ┌──────────────────────────────┐  ┌───────────────────────┐ │
+│  │  immich-server               │  │  immich-microservices │ │
+│  │  ┌─────────────────────────┐ │  │  ┌─────────────────┐  │ │
+│  │  │ rclone → /mnt/external- │ │  │  │ rclone → FUSE   │  │ │
+│  │  │ library (FUSE mount)    │ │  │  │ mount           │  │ │
+│  │  └─────────────────────────┘ │  │  └─────────────────┘  │ │
+│  │  ┌─────────────────────────┐ │  │  ┌─────────────────┐  │ │
+│  │  │ Immich API (port 2283)  │ │  │  │ Background jobs │  │ │
+│  │  └─────────────────────────┘ │  │  │ + DB migrations │  │ │
+│  └──────────────────────────────┘  │  └─────────────────┘  │ │
+│                                    └───────────────────────┘ │
+│                                                              │
+│  Named volumes:                                              │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
 │  │ postgres │ │  redis   │ │ uploads  │ │ ml_cache     │  │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘  │
-│  ┌──────────────┐ ┌──────────────┐                          │
-│  │ rclone_cache │ │rclone_config │  ← auto-generated from   │
-│  └──────────────┘ └──────────────┘     env vars             │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌────────────┐  │
+│  │rclone_cache_srv  │ │rclone_cache_ms  │ │rclone_conf │  │
+│  └──────────────────┘ └──────────────────┘ └────────────┘  │
 └──────────────────────────────────────────────────────────────┘
          │
          │  E2E-encrypted API (auto-2FA via totp_secret)
@@ -33,7 +38,7 @@ All configuration happens through Coolify's UI. No SSH into the host, no manual 
    Internxt Cloud
 ```
 
-All storage uses Docker **named volumes** except the FUSE mount point, which uses a bind mount (Docker auto-creates the directory). The `rclone.conf` file is auto-generated from environment variables on every container start. The `immich-microservices` service handles background jobs, library scanning, and database migrations — it must start before `immich-server`.
+rclone is embedded directly inside the immich-server and immich-microservices containers. Each container mounts its own FUSE filesystem — no cross-container mount propagation needed.
 
 ---
 
@@ -42,7 +47,7 @@ All storage uses Docker **named volumes** except the FUSE mount point, which use
 1. In the Coolify UI, go to **Project → New Resource → Docker Compose (from GitHub)**.
 2. Select this repository: `thies2005/immich-rclone-coolify`
 3. The `docker-compose.yml` is at the repo root — no base directory change needed.
-4. Coolify will build the custom rclone image from the fork during first deploy.
+4. Coolify will build custom immich images (with rclone included) during first deploy.
 
 ---
 
@@ -81,11 +86,10 @@ See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for the full list. Common overrides:
 ## Step 3: Deploy
 
 1. Click **Deploy** in the Coolify UI.
-2. The first deployment takes 5–10 minutes (rclone compiles from Go source).
+2. The first deployment takes 10–15 minutes (rclone compiles from Go source for each immich image).
 3. Watch the logs:
-    - **rclone**: Should show `Generating rclone.conf`, then `Starting rclone mount`
-    - **immich-microservices**: Starts after rclone passes healthchecks, runs DB migrations
-    - **immich-server**: Starts after microservices passes healthchecks (up to 120 seconds after microservices)
+   - **immich-microservices**: Should show `[immich-rclone] FUSE mount ready`, then `Running migrations`, then `Immich Microservices is running`
+   - **immich-server**: Should show `[immich-rclone] FUSE mount ready`, then `Immich Server is listening`
 
 ---
 
@@ -106,74 +110,44 @@ Open your domain (e.g. `https://photos.example.com`) and create the admin accoun
 
 ---
 
-## How rclone.conf Is Generated
+## How It Works
 
-The entrypoint script auto-generates `/config/rclone/rclone.conf` from environment variables on every container start:
+Each immich container (server + microservices) includes rclone and mounts Internxt directly via FUSE. The entrypoint:
+1. Generates `rclone.conf` from environment variables
+2. Starts `rclone mount` in the background
+3. Waits for the FUSE mount to be ready
+4. Starts the Immich application
 
-```ini
-[MyInternxt]
-type = internxt
-email = you@domain.com
-pass = <obscured by rclone>
-totp_secret = JBSWY3DPEHPK3PXP
-```
-
-This means:
-- **No manual rclone config** — just set env vars in Coolify
-- **Credential changes** — update env vars in Coolify UI, redeploy
-- **Config persists** in the `rclone_config` named volume between restarts, but is regenerated on each start from env vars
-
----
-
-## How Volumes Work
-
-| Volume | Type | Purpose |
-|---|---|---|
-| `rclone_config` | Named | Auto-generated `rclone.conf` |
-| `rclone_cache` | Named | VFS cache (hard-capped at 8G) |
-| `upload_data` | Named | Immich user uploads |
-| `ml_cache` | Named | ML model cache |
-| `postgres_data` | Named | Database |
-| `redis_data` | Named | Job queue |
-| `/mnt/immich-external-library` | Bind mount | FUSE mount point (auto-created) |
-
-Only the FUSE mount point uses a host bind mount (required for mount propagation between containers). Docker creates this directory automatically — no manual creation needed.
+This avoids cross-container mount propagation issues that occur in some Docker environments.
 
 ---
 
 ## Troubleshooting
 
-### rclone container exits immediately
+### Container fails to start
 
 ```bash
-docker logs immich-rclone 2>&1 | tail -30
+docker logs immich-server 2>&1 | tail -30
 ```
 
 Common causes:
 - **`INTERNXT_EMAIL must be set`**: Missing required variable in Coolify UI.
-- **`/dev/fuse not found`**: FUSE kernel module not available. Extremely rare on modern Linux — run `modprobe fuse` on the host.
+- **`/dev/fuse not found`**: FUSE kernel module not available. Run `modprobe fuse` on the host.
 - **Authentication failure**: Verify `INTERNXT_EMAIL`, `INTERNXT_PASSWORD`, and `INTERNXT_TOTP_SECRET` are correct.
 
-### rclone healthcheck fails
+### FUSE mount not ready
 
-- Internxt auth with 2FA can take 30–60s. The 90s `start_period` handles this.
-- Verify Internxt credentials are correct.
-- Check logs: `docker logs immich-rclone -f`
-- Empty remotes now pass the default healthcheck. Set `RCLONE_HEALTHCHECK_REQUIRE_CONTENTS=true` only if you want startup to fail on an empty library.
-
-### FUSE mount not visible to Immich
-
-- The `:shared` / `:slave` propagation is essential — don't remove from compose file.
-- Verify on the host: `mountpoint /mnt/immich-external-library && ls /mnt/immich-external-library`
+- Internxt auth with 2FA can take 30–60s. The entrypoint waits up to 60s.
+- Verify credentials are correct.
+- Check logs for `[immich-rclone]` prefixed messages.
 
 ### Cache filling up disk
 
-```bash
-docker exec immich-rclone du -sh /cache/vfs
-```
+Each immich container has its own VFS cache volume:
+- `rclone_cache_server` for immich-server
+- `rclone_cache_microservices` for immich-microservices
 
-- Hard-capped at `RCLONE_VFS_CACHE_MAX_SIZE` (default 8G).
-- Reduce to `4G` if needed. Set shorter `RCLONE_VFS_CACHE_MAX_AGE` (e.g. `12h`).
+Hard-capped at `RCLONE_VFS_CACHE_MAX_SIZE` (default 8G each). Total cache usage can be up to 16G. Reduce to `4G` if needed.
 
 ### Slow scans
 
