@@ -29,11 +29,15 @@ if [ -z "${RCLONE_VFS_CACHE_MAX_SIZE:-}" ]; then
     fatal "RCLONE_VFS_CACHE_MAX_SIZE must be set (e.g. 8G). Refusing to start without a hard cache limit."
 fi
 
-log "Setting up mount propagation (rshared) on root filesystem..."
-mount --make-rshared / 2>/dev/null || {
-    warn "Failed to make / rshared, trying /mnt and mount target..."
-    mount --make-rshared /mnt 2>/dev/null || true
-}
+log "Setting up mount propagation (rshared) on host filesystem..."
+if nsenter -m -t 1 mount --make-rshared /mnt 2>/dev/null; then
+    log "Host /mnt is now rshared"
+elif nsenter -m -t 1 mount --make-rshared / 2>/dev/null; then
+    log "Host / is now rshared"
+else
+    warn "Could not set host mount propagation via nsenter."
+    warn "The FUSE mount may not propagate to other containers."
+fi
 mount --make-rshared "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
 
 CONFIG_DIR="/config/rclone"
