@@ -173,7 +173,7 @@ services:
     image: docker.io/valkey/valkey:9@sha256:3eeb09785cd61ec8e3be35f8804c8892080f3ca21934d628abc24ee4ed1698f6
     container_name: immich-redis
     restart: unless-stopped
-    command: valkey-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: valkey-server --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     healthcheck:
