@@ -5,10 +5,34 @@ log()   { echo "[entrypoint] $*"; }
 warn()  { echo "[entrypoint] WARNING: $*" >&2; }
 fatal() { echo "[entrypoint] ERROR: $*" >&2; exit 1; }
 
-: "${RCLONE_REMOTE_SOURCE:?RCLONE_REMOTE_SOURCE must be set (e.g. MyInternxt:)}"
+INTERNXT_REMOTE_NAME="${INTERNXT_REMOTE_NAME:-MyInternxt}"
+: "${INTERNXT_EMAIL:?INTERNXT_EMAIL must be set}"
+: "${INTERNXT_PASSWORD:?INTERNXT_PASSWORD must be set}"
+INTERNXT_TOTP_SECRET="${INTERNXT_TOTP_SECRET:-}"
+
 : "${RCLONE_MOUNT_TARGET:?RCLONE_MOUNT_TARGET must be set (e.g. /mnt/external-library)}"
 : "${RCLONE_CACHE_DIR:?RCLONE_CACHE_DIR must be set (e.g. /cache/vfs)}"
 : "${RCLONE_VFS_CACHE_MAX_SIZE:?RCLONE_VFS_CACHE_MAX_SIZE must be set (e.g. 8G). Refusing to start without a hard cache limit.}"
+
+CONFIG_DIR="/config/rclone"
+mkdir -p "$CONFIG_DIR"
+
+log "Generating rclone.conf for remote '${INTERNXT_REMOTE_NAME}'..."
+
+{
+    echo "[${INTERNXT_REMOTE_NAME}]"
+    echo "type = internxt"
+    echo "email = ${INTERNXT_EMAIL}"
+    echo "password = ${INTERNXT_PASSWORD}"
+    if [ -n "$INTERNXT_TOTP_SECRET" ]; then
+        echo "totp_secret = ${INTERNXT_TOTP_SECRET}"
+    fi
+} > "$CONFIG_DIR/rclone.conf"
+
+chmod 600 "$CONFIG_DIR/rclone.conf"
+log "rclone.conf written to ${CONFIG_DIR}/rclone.conf"
+
+RCLONE_REMOTE_SOURCE="${INTERNXT_REMOTE_NAME}:"
 
 if [ "${RCLONE_VFS_CACHE_MODE:-full}" != "full" ]; then
     warn "RCLONE_VFS_CACHE_MODE is set to '${RCLONE_VFS_CACHE_MODE}'."
@@ -53,6 +77,7 @@ log "  remote:       ${RCLONE_REMOTE_SOURCE}"
 log "  mount target: ${RCLONE_MOUNT_TARGET}"
 log "  cache dir:    ${RCLONE_CACHE_DIR}"
 log "  cache max:    ${RCLONE_VFS_CACHE_MAX_SIZE}"
+log "  2FA/TOTP:     $([ -n "$INTERNXT_TOTP_SECRET" ] && echo 'enabled' || echo 'disabled')"
 
 rclone mount \
     "${RCLONE_REMOTE_SOURCE}" \

@@ -12,6 +12,8 @@
 
 A production-ready Docker Compose stack that runs **Immich** with an **Internxt** remote mounted as an external library via a custom **rclone** fork with automatic 2FA re-authentication. Designed to deploy on a **50 GB** Coolify host.
 
+**No SSH into the host. No manual file creation. Just set 3–4 env vars in Coolify and deploy.**
+
 </div>
 
 ---
@@ -23,138 +25,102 @@ A production-ready Docker Compose stack that runs **Immich** with an **Internxt*
      (photos)      (server)     (E2E decrypt)        (encrypted)
 ```
 
-- Mounts your **Internxt** cloud storage as a filesystem inside Docker using a [custom rclone fork](https://github.com/thies2005/rclone) with **automatic TOTP 2FA** support
+- Mounts your **Internxt** cloud storage inside Docker using a [custom rclone fork](https://github.com/thies2005/rclone) with **automatic TOTP 2FA** support
 - Serves the mount to **Immich** as a read-only external library for browsing, searching, and backing up photos
 - Keeps **0 bytes** of your Internxt library on local disk (VFS cache only)
-- Runs entirely through **Coolify** with no `.env` file needed
+- Runs entirely through **Coolify** — everything configured via environment variables in the UI
 
-## Why This Exists
+## How It Works
 
-Internxt uses **client-side end-to-end encryption**. Every file must be fully downloaded and decrypted before it can be read. Standard cloud mounts break because they attempt random seeks on encrypted ciphertext.
-
-This stack forces `--vfs-cache-mode full` (the only mode compatible with E2E) and isolates the cache, uploads, and mount point into separate storage volumes to stay within a strict **50 GB budget**.
-
-## Architecture
+1. **rclone.conf is auto-generated** from env vars on every container start — no manual config file needed
+2. **Named Docker volumes** for all persistent data — Coolify manages them automatically
+3. **FUSE mount shared between containers** via bind mount with `shared`/`slave` propagation — the mount point directory is auto-created by Docker
+4. **`--vfs-cache-mode full` enforced** — the only mode compatible with Internxt's E2E encryption
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Coolify Host (50 GB disk)                                       │
-│                                                                  │
-│  ┌────────────┐   host bind :rshared   ┌───────────────────┐   │
-│  │  rclone     │───────────────────────│ /external-library  │   │
-│  │  (FUSE)     │                       │  (mount point)    │   │
-│  └─────┬───────┘                       └────────┬──────────┘   │
-│        │  host bind :ro,rslave                  │              │
-│  ┌─────▼───────────────────────────────────────▼───────────┐   │
-│  │  immich-server (API + web)                             │   │
-│  └────────────────────────────────────────────────────────┘   │
-│                                                                │
-│  ┌──────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
-│  │  immich-ml    │  │ redis    │  │ postgres │  │  rclone  │  │
-│  │  (AI search)  │  │ (queue)  │  │ (pgvector)│  │  cache   │  │
-│  └──────────────┘  └──────────┘  └──────────┘  └──────────┘  │
-│       ~3 GB          <100 MB       ~2 GB         ~8 GB cap    │
-└────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Docker (managed by Coolify)                                 │
+│                                                              │
+│  ┌────────────┐   bind mount :shared   ┌──────────────────┐ │
+│  │  rclone     │───────────────────────│  FUSE mount point │ │
+│  │  (FUSE)     │                       │  (auto-created)   │ │
+│  └─────┬───────┘                       └────────┬─────────┘ │
+│        │        bind mount :ro,slave             │           │
+│  ┌─────▼────────────────────────────────────────▼─────────┐ │
+│  │  immich-server                                        │ │
+│  └───────────────────────────────────────────────────────┘ │
+│                                                             │
+│  Named volumes (Docker-managed, no host paths needed):      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
+│  │ postgres │ │  redis   │ │ uploads  │ │ ml_cache     │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────┘  │
+│  ┌──────────────┐ ┌──────────────┐                          │
+│  │ rclone_cache │ │rclone_config │  ← auto-generated       │
+│  └──────────────┘ └──────────────┘     from env vars       │
+└──────────────────────────────────────────────────────────────┘
          │
          │  E2E-encrypted API (auto-2FA via totp_secret)
          ▼
    Internxt Cloud Storage
 ```
 
-### Key Design Choices
-
-| Decision | Rationale |
-|---|---|
-| Host bind mounts for FUSE | Named volumes default to `rprivate` propagation, which silently prevents FUSE mounts from being visible across containers. Bind mounts with `rshared`/`rslave` fix this. |
-| Build rclone from fork source | The custom fork adds `totp_secret` support for automatic Internxt 2FA re-login. Not available in upstream rclone. |
-| No `.env` file | Coolify injects variables via its UI. Required variables use `:?` syntax so the container refuses to start with a clear error message. |
-| Three isolated storage paths | Cache, uploads, and mount point are physically separate to prevent any single component from consuming the entire 50 GB disk. |
-
 ## 50 GB Storage Budget
 
-| Component | Allocation | Local? |
-|---|---|---|
-| rclone VFS cache | **8 GB** (hard cap) | Yes — evicted automatically |
-| Immich uploads | ~4 GB | Yes |
-| ML model cache | ~3 GB | Yes |
-| PostgreSQL | ~2 GB | Yes |
-| Redis | <100 MB | Yes |
-| Docker + OS | ~5 GB | Yes |
-| **External library** | **0 GB** | **No** — served from Internxt |
-| **Headroom** | **~28 GB** | |
+| Component | Volume | Allocation | Local? |
+|---|---|---|---|
+| rclone VFS cache | `rclone_cache` | **8 GB** (hard cap) | Yes — auto-evicted |
+| Immich uploads | `upload_data` | ~4 GB | Yes |
+| ML model cache | `ml_cache` | ~3 GB | Yes |
+| PostgreSQL | `postgres_data` | ~2 GB | Yes |
+| Redis | `redis_data` | <100 MB | Yes |
+| Docker + OS | *(Docker root)* | ~5 GB | Yes |
+| **External library** | *(FUSE mount)* | **0 GB** | **No** — Internxt |
+| **Headroom** | | **~28 GB** | |
 
 ## Quick Start
 
-### Prerequisites
+### 1. Add to Coolify
 
-- A Linux host running [Coolify](https://coolify.io)
-- `fuse3` installed on the host (`apt install fuse3`)
-- An [Internxt](https://internxt.com) account
-- **50 GB** free disk space
+**New Resource → Docker Compose (from GitHub)** → select `thies2005/immich-rclone-coolify`
 
-### 1. Host Prep
+### 2. Set these env vars in the Coolify UI
 
-```bash
-apt update && apt install -y fuse3
-BASE="/data/coolify/immich"
-mkdir -p "$BASE"/{external-library,rclone-config,rclone-cache,upload,postgres,ml-cache,redis}
+```
+INTERNXT_EMAIL=you@domain.com
+INTERNXT_PASSWORD=your-internxt-password
+INTERNXT_TOTP_SECRET=JBSWY3DPEHPK3PXP
+DB_PASSWORD=a-strong-random-password
 ```
 
-### 2. Configure rclone
+> `INTERNXT_TOTP_SECRET` is only needed if your Internxt account has 2FA enabled. It's the **base32 secret key** from when you set up 2FA — NOT a one-time code from your authenticator app. If you lost it, disable and re-enable 2FA on your Internxt account.
 
-Create `$BASE/rclone-config/rclone.conf`:
+### 3. Deploy
 
-```ini
-[MyInternxt]
-type = internxt
-email = you@domain.com
-password = your-password
-totp_secret = JBSWY3DPEHPK3PXP
-```
+Click **Deploy**. First deploy takes 5–10 minutes (rclone compiles from source).
 
-> `totp_secret` is the base32 key from when you set up 2FA on your Internxt account — this fork uses it to automatically generate TOTP codes on every reconnect, so you never need to enter 2FA manually.
+### 4. Post-deploy
 
-### 3. Add to Coolify
+- Open Immich, create admin account
+- **Administration → External Libraries → Create Library**
+- Path: `/mnt/external-library` → **Scan**
 
-1. **New Resource → Docker Compose (from GitHub)**
-2. Select `thies2005/immich-rclone-coolify`
-3. Add the required environment variables (see below)
-4. Deploy
-
-### Minimum Required Variables
-
-| Variable | Value |
-|---|---|
-| `RCLONE_REMOTE_SOURCE` | `MyInternxt:` |
-| `RCLONE_HOST_CONFIG_PATH` | `/data/coolify/immich/rclone-config` |
-| `RCLONE_HOST_MOUNT_PATH` | `/data/coolify/immich/external-library` |
-| `RCLONE_HOST_CACHE_PATH` | `/data/coolify/immich/rclone-cache` |
-| `RCLONE_VFS_CACHE_MAX_SIZE` | `8G` |
-| `UPLOAD_HOST_PATH` | `/data/coolify/immich/upload` |
-| `DB_HOST_PATH` | `/data/coolify/immich/postgres` |
-| `ML_CACHE_HOST_PATH` | `/data/coolify/immich/ml-cache` |
-| `REDIS_HOST_PATH` | `/data/coolify/immich/redis` |
-| `DB_PASSWORD` | *(strong random password)* |
-
-### 4. Post-Deploy
-
-- Open Immich and create your admin account
-- Go to **Administration → External Libraries**
-- Add a library with path `/mnt/external-library`
-- Click **Scan** (first scan is slow — every file downloads and decrypts from Internxt)
+First scan is slow (2–4 hours for 10k photos) — every file downloads and decrypts through E2E. Subsequent scans are fast.
 
 ## What to Expect
 
-- **First deploy**: 5–10 minutes (rclone compiles from source)
-- **First scan**: Slow — each file is downloaded, decrypted, cached. 10k photos may take 2–4 hours. This is normal.
-- **Subsequent scans**: Fast — only changed files are re-downloaded, directory listings are cached
-- **Subsequent deploys**: Minutes — the rclone image is cached by Docker
+| Phase | Duration | Why |
+|---|---|---|
+| First deploy | 5–10 min | rclone compiles from Go source |
+| rclone startup | 30–90 sec | Internxt auth + 2FA + FUSE mount |
+| First library scan | 2–4 hours / 10k photos | E2E download + decrypt per file |
+| Subsequent deploys | 1–2 min | Image cached, rclone reconnects |
+| Subsequent scans | Minutes | Only changed files re-downloaded |
 
 ## Services
 
 | Service | Image | Purpose |
 |---|---|---|
-| `rclone` | Built from [thies2005/rclone](https://github.com/thies2005/rclone) | FUSE mount of Internxt with auto-2FA |
+| `rclone` | Built from [thies2005/rclone](https://github.com/thies2005/rclone) | FUSE mount with auto-2FA |
 | `immich-server` | `ghcr.io/immich-app/immich` | API + web UI |
 | `immich-machine-learning` | `ghcr.io/immich-app/immich` | Smart search, face detection |
 | `postgres` | `tensorchord/pgvecto-rs:pg14` | Database with pgvector |
@@ -164,19 +130,19 @@ totp_secret = JBSWY3DPEHPK3PXP
 
 | File | Description |
 |---|---|
-| [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Full step-by-step deployment guide with troubleshooting |
-| [`ENV-VARIABLES.md`](ENV-VARIABLES.md) | Complete reference for all environment variables |
+| [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Full step-by-step guide with troubleshooting |
+| [`ENV-VARIABLES.md`](ENV-VARIABLES.md) | All environment variables with defaults |
 | [`docker-compose.yml`](docker-compose.yml) | Service definitions |
 | [`Dockerfile.rclone`](Dockerfile.rclone) | Multi-stage rclone build from fork |
-| [`scripts/entrypoint.sh`](scripts/entrypoint.sh) | Mount startup, validation, signal handling |
+| [`scripts/entrypoint.sh`](scripts/entrypoint.sh) | Config generation, mount, signal handling |
 | [`scripts/healthcheck.sh`](scripts/healthcheck.sh) | FUSE mount health verification |
 
 ## Built With
 
 - [Immich](https://immich.app) — self-hosted Google Photos alternative
 - [Internxt](https://internxt.com) — zero-knowledge encrypted cloud storage
-- [rclone](https://rclone.org) — the Swiss army knife of cloud storage (custom [fork](https://github.com/thies2005/rclone) with TOTP 2FA support)
-- [Coolify](https://coolify.io) — open-source PaaS platform
+- [rclone](https://rclone.org) — cloud storage Swiss army knife (custom [fork](https://github.com/thies2005/rclone) with TOTP 2FA)
+- [Coolify](https://coolify.io) — open-source PaaS
 
 ## License
 

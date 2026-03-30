@@ -17,10 +17,13 @@ services:
     security_opt:
       - apparmor:unconfined
     environment:
-      RCLONE_REMOTE_SOURCE: ${RCLONE_REMOTE_SOURCE}
+      INTERNXT_REMOTE_NAME: ${INTERNXT_REMOTE_NAME:-MyInternxt}
+      INTERNXT_EMAIL: ${INTERNXT_EMAIL:?INTERNXT_EMAIL must be set}
+      INTERNXT_PASSWORD: ${INTERNXT_PASSWORD:?INTERNXT_PASSWORD must be set}
+      INTERNXT_TOTP_SECRET: ${INTERNXT_TOTP_SECRET:-}
       RCLONE_MOUNT_TARGET: ${RCLONE_MOUNT_TARGET:-/mnt/external-library}
       RCLONE_CACHE_DIR: ${RCLONE_CACHE_DIR:-/cache/vfs}
-      RCLONE_VFS_CACHE_MAX_SIZE: ${RCLONE_VFS_CACHE_MAX_SIZE:?RCLONE_VFS_CACHE_MAX_SIZE must be set}
+      RCLONE_VFS_CACHE_MAX_SIZE: ${RCLONE_VFS_CACHE_MAX_SIZE:-8G}
       RCLONE_VFS_CACHE_MAX_AGE: ${RCLONE_VFS_CACHE_MAX_AGE:-48h}
       RCLONE_BUFFER_SIZE: ${RCLONE_BUFFER_SIZE:-64M}
       RCLONE_READ_AHEAD: ${RCLONE_READ_AHEAD:-128M}
@@ -35,9 +38,14 @@ services:
       RCLONE_NO_CHECKSUM: ${RCLONE_NO_CHECKSUM:-true}
       RCLONE_EXTRA_MOUNT_ARGS: ${RCLONE_EXTRA_MOUNT_ARGS:-}
     volumes:
-      - ${RCLONE_HOST_CONFIG_PATH:?RCLONE_HOST_CONFIG_PATH must be set}:/config/rclone:ro
-      - ${RCLONE_HOST_MOUNT_PATH:?RCLONE_HOST_MOUNT_PATH must be set}:${RCLONE_MOUNT_TARGET:-/mnt/external-library}:rshared
-      - ${RCLONE_HOST_CACHE_PATH:?RCLONE_HOST_CACHE_PATH must be set}:${RCLONE_CACHE_DIR:-/cache/vfs}
+      - rclone_config:/config/rclone
+      - rclone_cache:${RCLONE_CACHE_DIR:-/cache/vfs}
+      - type: bind
+        source: ${RCLONE_MOUNT_HOST_PATH:-/mnt/immich-external-library}
+        target: ${RCLONE_MOUNT_TARGET:-/mnt/external-library}
+        bind:
+          create_host_path: true
+          propagation: shared
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 30s
@@ -67,8 +75,14 @@ services:
       REDIS_HOSTNAME: redis
       IMMICH_WORKERS_INCLUDE: api
     volumes:
-      - ${UPLOAD_HOST_PATH:?UPLOAD_HOST_PATH must be set}:/usr/src/app/upload
-      - ${RCLONE_HOST_MOUNT_PATH:?RCLONE_HOST_MOUNT_PATH must be set}:${RCLONE_MOUNT_TARGET:-/mnt/external-library}:ro,rslave
+      - upload_data:/usr/src/app/upload
+      - type: bind
+        source: ${RCLONE_MOUNT_HOST_PATH:-/mnt/immich-external-library}
+        target: ${RCLONE_MOUNT_TARGET:-/mnt/external-library}
+        read_only: true
+        bind:
+          create_host_path: true
+          propagation: slave
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2283/api/server-info/ping"]
       interval: 60s
@@ -89,8 +103,8 @@ services:
       REDIS_HOSTNAME: redis
       IMMICH_WORKERS_INCLUDE: machinelearning
     volumes:
-      - ${UPLOAD_HOST_PATH:?UPLOAD_HOST_PATH must be set}:/usr/src/app/upload
-      - ${ML_CACHE_HOST_PATH:?ML_CACHE_HOST_PATH must be set}:/cache
+      - upload_data:/usr/src/app/upload
+      - ml_cache:/cache
     deploy:
       resources:
         limits:
@@ -105,7 +119,7 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-immich}
       POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
     volumes:
-      - ${DB_HOST_PATH:?DB_HOST_PATH must be set}:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich} -d ${DB_DATABASE_NAME:-immich}"]
       interval: 30s
@@ -123,7 +137,7 @@ services:
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - ${REDIS_HOST_PATH:?REDIS_HOST_PATH must be set}:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -134,3 +148,11 @@ services:
       resources:
         limits:
           memory: 512M
+
+volumes:
+  rclone_config:
+  rclone_cache:
+  upload_data:
+  ml_cache:
+  postgres_data:
+  redis_data:
