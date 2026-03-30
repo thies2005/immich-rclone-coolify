@@ -32,13 +32,18 @@ fi
 CONFIG_DIR="/config/rclone"
 mkdir -p "$CONFIG_DIR"
 
+OBSCURED_PASSWORD="$(rclone obscure "${INTERNXT_PASSWORD}")"
+if [ -z "${OBSCURED_PASSWORD}" ]; then
+    fatal "Failed to obscure Internxt password for rclone config generation."
+fi
+
 log "Generating rclone.conf for remote '${INTERNXT_REMOTE_NAME}'..."
 
 {
     echo "[${INTERNXT_REMOTE_NAME}]"
     echo "type = internxt"
     echo "email = ${INTERNXT_EMAIL}"
-    echo "password = ${INTERNXT_PASSWORD}"
+    echo "pass = ${OBSCURED_PASSWORD}"
     if [ -n "$INTERNXT_TOTP_SECRET" ]; then
         echo "totp_secret = ${INTERNXT_TOTP_SECRET}"
     fi

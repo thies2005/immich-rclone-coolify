@@ -29,6 +29,7 @@ A production-ready Docker Compose stack that runs **Immich** with an **Internxt*
 - Serves the mount to **Immich** as a read-only external library for browsing, searching, and backing up photos
 - Keeps **0 bytes** of your Internxt library on local disk (VFS cache only)
 - Runs entirely through **Coolify** — everything configured via environment variables in the UI
+- Writes the Internxt password to `rclone.conf` in rclone's required obscured `pass =` format before mounting
 
 ## How It Works
 

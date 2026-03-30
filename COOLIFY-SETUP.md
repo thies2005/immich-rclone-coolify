@@ -113,7 +113,7 @@ The entrypoint script auto-generates `/config/rclone/rclone.conf` from environme
 [MyInternxt]
 type = internxt
 email = you@domain.com
-password = your-password
+pass = <obscured by rclone>
 totp_secret = JBSWY3DPEHPK3PXP
 ```
 
