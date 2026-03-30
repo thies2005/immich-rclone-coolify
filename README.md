@@ -6,7 +6,7 @@
 
 [![GitHub](https://img.shields.io/badge/repo-thies2005%2Fimmich--rclone--coolify-181717?logo=github)](https://github.com/thies2005/immich-rclone-coolify)
 [![Coolify](https://img.shields.io/badge/deploy-Coolify-blue)](https://coolify.io)
-[![Immich](https://img.shields.io/badge/Immich-release-4250af?logo=immich)](https://immich.app)
+[![Immich](https://img.shields.io/badge/Immich-v2-4250af?logo=immich)](https://immich.app)
 [![Internxt](https://img.shields.io/badge/Internxt-E2E%20encrypted-0066ff)](https://internxt.com)
 [![rclone](https://img.shields.io/badge/rclone-custom%20fork-orange?logo=rclone)](https://github.com/thies2005/rclone)
 
@@ -123,10 +123,10 @@ First scan is slow (2–4 hours for 10k photos) — every file downloads and dec
 | Service | Image | Purpose |
 |---|---|---|
 | `rclone` | Built from [thies2005/rclone](https://github.com/thies2005/rclone) | FUSE mount with auto-2FA |
-| `immich-server` | `ghcr.io/immich-app/immich` | API + web UI |
-| `immich-machine-learning` | `ghcr.io/immich-app/immich` | Smart search, face detection |
-| `postgres` | `tensorchord/pgvecto-rs:pg14` | Database with pgvector |
-| `redis` | `redis:7-alpine` | Job queue + cache |
+| `immich-server` | `ghcr.io/immich-app/immich-server` | API + web UI |
+| `immich-machine-learning` | `ghcr.io/immich-app/immich-machine-learning` | Smart search, face detection |
+| `postgres` | `ghcr.io/immich-app/postgres` | Database with vector extensions |
+| `redis` | `docker.io/valkey/valkey:9` | Job queue + cache |
 
 ## Documentation
 

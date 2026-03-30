@@ -72,6 +72,10 @@ RCLONE_CONTIMEOUT="${RCLONE_CONTIMEOUT:-30s}"
 RCLONE_NO_CHECKSUM="${RCLONE_NO_CHECKSUM:-true}"
 RCLONE_EXTRA_MOUNT_ARGS="${RCLONE_EXTRA_MOUNT_ARGS:-}"
 
+if [ -n "${RCLONE_EXTRA_MOUNT_ARGS}" ]; then
+    fatal "RCLONE_EXTRA_MOUNT_ARGS is disabled for safety. Add supported flags to the entrypoint explicitly instead."
+fi
+
 mkdir -p "${RCLONE_MOUNT_TARGET}" "${RCLONE_CACHE_DIR}"
 
 CHECKSUM_FLAG=""
@@ -113,14 +117,15 @@ rclone mount \
     --contimeout "${RCLONE_CONTIMEOUT}" \
     ${CHECKSUM_FLAG} \
     --allow-other \
-    --log-level INFO \
-    ${RCLONE_EXTRA_MOUNT_ARGS} &
+    --log-level INFO &
 
 RCLONE_PID=$!
 log "rclone started (PID ${RCLONE_PID})"
 
-wait $RCLONE_PID
+set +e
+wait "$RCLONE_PID"
 EXIT_CODE=$?
+set -e
 log "rclone exited with code ${EXIT_CODE}"
 fusermount -uz "${RCLONE_MOUNT_TARGET}" 2>/dev/null || umount -l "${RCLONE_MOUNT_TARGET}" 2>/dev/null || true
-exit $EXIT_CODE
+exit "$EXIT_CODE"

@@ -61,7 +61,7 @@ Add these only if you want to customize defaults:
 | Variable Name | Default | When to Change |
 |---|---|---|
 | `INTERNXT_REMOTE_NAME` | `MyInternxt` | If you want a custom remote name |
-| `IMMICH_VERSION` | `release` | Pin a specific version like `v1.134.0` |
+| `IMMICH_VERSION` | `v2` | Pin a specific version like `v2.1.0` |
 | `RCLONE_VFS_CACHE_MAX_SIZE` | `8G` | Reduce to `4G` if disk is tight |
 | `RCLONE_DIR_CACHE_TIME` | `5m` | Increase to `30m` to reduce API calls |
 | `RCLONE_TIMEOUT` | `120s` | Increase to `300s` for slow connections |
@@ -86,7 +86,7 @@ After adding all variables, review the list:
 |---|---|---|
 | Clone repository | "Cloning repository..." | ~10 seconds |
 | Build rclone image | "Building image..." (Go compilation) | 3–5 minutes |
-| Pull Immich images | "Pulling image..." (Immich, postgres, redis) | 1–2 minutes |
+| Pull Immich images | "Pulling image..." (Immich, postgres, valkey) | 1–2 minutes |
 | Create volumes | "Creating volume..." | ~5 seconds |
 | Start containers | "Starting container..." | ~10 seconds |
 | rclone healthcheck | Healthcheck retries in logs | 30–90 seconds |

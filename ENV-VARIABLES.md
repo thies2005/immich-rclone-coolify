@@ -31,7 +31,7 @@ Paste these into the Coolify service configuration UI. Most variables have sane 
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `IMMICH_VERSION` | No | `release` | Immich image tag. Pin to a version (e.g. `v1.134.0`) for reproducibility. |
+| `IMMICH_VERSION` | No | `v2` | Immich image tag used for `ghcr.io/immich-app/immich-server` and `ghcr.io/immich-app/immich-machine-learning`. Pin to a version (e.g. `v2.1.0`) for reproducibility. |
 | `IMMICH_HTTP_PORT` | No | `2283` | Host port for the web interface. Coolify's reverse proxy usually handles this. |
 
 ---
@@ -70,7 +70,7 @@ Paste these into the Coolify service configuration UI. Most variables have sane 
 | `RCLONE_TIMEOUT` | No | `120s` | Idle timeout. Accounts for E2E decryption latency. |
 | `RCLONE_CONTIMEOUT` | No | `30s` | Connection establishment timeout. |
 | `RCLONE_NO_CHECKSUM` | No | `true` | Skip checksums — Internxt E2E can cause false mismatches. |
-| `RCLONE_EXTRA_MOUNT_ARGS` | No | *(empty)* | Additional flags passed to `rclone mount`. |
+| `RCLONE_EXTRA_MOUNT_ARGS` | No | *(empty)* | Reserved. Non-empty values are rejected for safety because raw shell-passed flags can override required mount settings. |
 
 ---
 

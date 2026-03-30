@@ -153,11 +153,12 @@ Common causes:
 - **`/dev/fuse not found`**: FUSE kernel module not available. Extremely rare on modern Linux — run `modprobe fuse` on the host.
 - **Authentication failure**: Verify `INTERNXT_EMAIL`, `INTERNXT_PASSWORD`, and `INTERNXT_TOTP_SECRET` are correct.
 
-### rclone healthcheck fails (mount is empty)
+### rclone healthcheck fails
 
 - Internxt auth with 2FA can take 30–60s. The 90s `start_period` handles this.
 - Verify Internxt credentials are correct.
 - Check logs: `docker logs immich-rclone -f`
+- Empty remotes now pass the default healthcheck. Set `RCLONE_HEALTHCHECK_REQUIRE_CONTENTS=true` only if you want startup to fail on an empty library.
 
 ### FUSE mount not visible to Immich
 
