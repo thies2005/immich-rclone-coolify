@@ -106,6 +106,8 @@ Click **Deploy**. First deploy takes 5–10 minutes (rclone compiles from source
 
 First scan is slow (2–4 hours for 10k photos) — every file downloads and decrypts through E2E. Subsequent scans are fast.
 
+> 📖 **Need a detailed step-by-step guide?** See [`DEPLOY.md`](DEPLOY.md) for complete Coolify deployment instructions with screenshots-like navigation.
+
 ## What to Expect
 
 | Phase | Duration | Why |
@@ -130,7 +132,8 @@ First scan is slow (2–4 hours for 10k photos) — every file downloads and dec
 
 | File | Description |
 |---|---|
-| [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Full step-by-step guide with troubleshooting |
+| [`DEPLOY.md`](DEPLOY.md) | **Step-by-step Coolify deployment guide** (start here for detailed instructions) |
+| [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Full troubleshooting guide with common issues |
 | [`ENV-VARIABLES.md`](ENV-VARIABLES.md) | All environment variables with defaults |
 | [`docker-compose.yml`](docker-compose.yml) | Service definitions |
 | [`Dockerfile.rclone`](Dockerfile.rclone) | Multi-stage rclone build from fork |
