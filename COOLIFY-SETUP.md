@@ -16,7 +16,7 @@ All configuration happens through Coolify's UI. No SSH into the host, no manual 
 │  └─────┬───────┘                       └────────┬─────────┘ │
 │        │        bind mount :ro,slave             │           │
 │  ┌─────▼────────────────────────────────────────▼─────────┐ │
-│  │  immich-server                                        │ │
+│  │  immich-server  +  immich-microservices                │ │
 │  └───────────────────────────────────────────────────────┘ │
 │                                                             │
 │  Named volumes (Docker-managed, no host paths needed):      │
@@ -33,7 +33,7 @@ All configuration happens through Coolify's UI. No SSH into the host, no manual 
    Internxt Cloud
 ```
 
-All storage uses Docker **named volumes** except the FUSE mount point, which uses a bind mount (Docker auto-creates the directory). The `rclone.conf` file is auto-generated from environment variables on every container start.
+All storage uses Docker **named volumes** except the FUSE mount point, which uses a bind mount (Docker auto-creates the directory). The `rclone.conf` file is auto-generated from environment variables on every container start. The `immich-microservices` service handles background jobs, library scanning, and database migrations — it must start before `immich-server`.
 
 ---
 
@@ -83,8 +83,9 @@ See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for the full list. Common overrides:
 1. Click **Deploy** in the Coolify UI.
 2. The first deployment takes 5–10 minutes (rclone compiles from Go source).
 3. Watch the logs:
-   - **rclone**: Should show `Generating rclone.conf`, then `Starting rclone mount`
-   - **immich-server**: Starts after rclone passes healthchecks (up to 90 seconds)
+    - **rclone**: Should show `Generating rclone.conf`, then `Starting rclone mount`
+    - **immich-microservices**: Starts after rclone passes healthchecks, runs DB migrations
+    - **immich-server**: Starts after microservices passes healthchecks (up to 120 seconds after microservices)
 
 ---
 

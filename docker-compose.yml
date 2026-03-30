@@ -64,6 +64,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      immich-microservices:
+        condition: service_healthy
     labels:
       - "traefik.http.services.immich-server.loadbalancer.server.port=2283"
       - "traefik.docker.network=ugu61g8y34hs31n9p99q62xl"
@@ -75,6 +77,41 @@ services:
       DB_PORT: 5432
       REDIS_HOSTNAME: redis
       IMMICH_WORKERS_INCLUDE: api
+    volumes:
+      - upload_data:/usr/src/app/upload
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        read_only: true
+        bind:
+          create_host_path: true
+          propagation: slave
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2283/api/server/ping"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  immich-microservices:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    container_name: immich-microservices
+    restart: unless-stopped
+    depends_on:
+      rclone:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: microservices
     volumes:
       - upload_data:/usr/src/app/upload
       - type: bind
