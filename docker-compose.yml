@@ -9,13 +9,8 @@ services:
         RCLONE_REPO: ${RCLONE_REPO:-https://github.com/thies2005/rclone.git}
         RCLONE_BRANCH: ${RCLONE_BRANCH:-master}
     restart: unless-stopped
+    privileged: true
     pid: host
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse:/dev/fuse
-    security_opt:
-      - apparmor:unconfined
     environment:
       INTERNXT_REMOTE_NAME: ${INTERNXT_REMOTE_NAME:-MyInternxt}
       INTERNXT_EMAIL: ${INTERNXT_EMAIL}
