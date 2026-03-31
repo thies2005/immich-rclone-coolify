@@ -190,7 +190,6 @@ RCLONE_BUFFER_SIZE=128M
 RCLONE_READ_AHEAD=256M
 RCLONE_VFS_CACHE_POLL_INTERVAL=30s
 RCLONE_DIR_CACHE_TIME=30m
-RCLONE_ATTR_CACHE_TIME=30m
 RCLONE_TRANSFERS=2
 RCLONE_CHECKERS=4
 RCLONE_RETRIES=5
@@ -258,7 +257,7 @@ exec "${RCLONE_BIN}" mount \
     --vfs-read-ahead "${RCLONE_READ_AHEAD}" \
     --vfs-cache-poll-interval "${RCLONE_VFS_CACHE_POLL_INTERVAL}" \
     --dir-cache-time "${RCLONE_DIR_CACHE_TIME}" \
-    --attr-cache-time "${RCLONE_ATTR_CACHE_TIME}" \
+
     --transfers "${RCLONE_TRANSFERS}" \
     --checkers "${RCLONE_CHECKERS}" \
     --retries "${RCLONE_RETRIES}" \
