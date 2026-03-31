@@ -1,43 +1,26 @@
 # Coolify Deployment — Setup Guide
 
-All configuration happens through Coolify's UI. No SSH into the host, no manual file creation, no `.env` files.
+rclone runs on the host as a systemd service. This guide covers the Coolify (Docker) side.
 
 ---
 
-## Architecture
+## Prerequisite: Install rclone on the Host
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Docker (managed by Coolify)                                 │
-│                                                              │
-│  ┌────────────┐   rshared/rslave      ┌──────────────────┐ │
-│  │  rclone     │──bind mount──────────│  FUSE mount point │ │
-│  │  (FUSE)     │   propagation        │  (auto-created)   │ │
-│  └─────┬───────┘                      └────────┬─────────┘ │
-│        │                                        │           │
-│        │  ┌─────────────────────────────────────┘           │
-│        │  │                                                 │
-│  ┌─────▼──▼──────────────┐  ┌──────────────────────────┐   │
-│  │  immich-server        │  │  immich-microservices    │   │
-│  │  (API + web UI)       │  │  (background jobs +      │   │
-│  │                      │  │   DB migrations)          │   │
-│  └───────────────────────┘  └──────────────────────────┘   │
-│                                                              │
-│  Named volumes (Docker-managed, no host paths needed):      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐  │
-│  │ postgres │ │  redis   │ │ uploads  │ │ ml_cache     │  │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────┘  │
-│  ┌──────────────┐ ┌──────────────┐                          │
-│  │ rclone_cache │ │rclone_config │  ← auto-generated from   │
-│  └──────────────┘ └──────────────┘     env vars             │
-└──────────────────────────────────────────────────────────────┘
-         │
-         │  E2E-encrypted API (auto-2FA via totp_secret)
-         ▼
-   Internxt Cloud
+Before deploying in Coolify, SSH into your server once and run:
+
+```bash
+sudo bash install.sh
 ```
 
-The rclone container mounts Internxt via FUSE and shares it to immich containers using `rshared`/`rslave` bind mount propagation. The rclone container runs `mount --make-rshared /` on startup to ensure propagation works regardless of host namespace defaults.
+This builds rclone, sets up your Internxt credentials, and creates a systemd service that auto-mounts on boot. See the [README](README.md) for details.
+
+Verify the mount is working:
+
+```bash
+ls /mnt/immich-external-library
+```
+
+If you see your Internxt files, proceed to Coolify setup.
 
 ---
 
@@ -45,51 +28,43 @@ The rclone container mounts Internxt via FUSE and shares it to immich containers
 
 1. In the Coolify UI, go to **Project → New Resource → Docker Compose (from GitHub)**.
 2. Select this repository: `thies2005/immich-rclone-coolify`
-3. The `docker-compose.yml` is at the repo root — no base directory change needed.
-4. Coolify will build the custom rclone image from the fork during first deploy.
+3. Use the **`host-rclone`** branch.
+4. The `docker-compose.yml` is at the repo root — no base directory change needed.
 
 ---
 
-## Step 2: Set Environment Variables
+## Step 2: Set Environment Variable
 
-In the Coolify resource settings, add these **required** variables:
+In the Coolify resource settings, add:
 
 | Variable | Value |
 |---|---|
-| `INTERNXT_EMAIL` | `you@domain.com` |
-| `INTERNXT_PASSWORD` | `your-internxt-password` |
-| `INTERNXT_TOTP_SECRET` | `JBSWY3DPEHPK3PXP` *(only if your account uses 2FA)* |
 | `DB_PASSWORD` | *(a strong random password)* |
 
-That's it. Everything else has working defaults.
+That's the only required variable. Everything else has working defaults.
 
-> **Getting your TOTP secret:** When you set up 2FA on your Internxt account, you scanned a QR code. The `secret=` parameter inside that QR code (a base32 string like `JBSWY3DPEHPK3PXP`) is what goes in `INTERNXT_TOTP_SECRET`. This is NOT a one-time code from your authenticator — it's the permanent secret key. If you lost it, disable and re-enable 2FA on your Internxt account to get a new one.
-
-### Optional tuning
-
-See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for the full list. Common overrides:
+### Optional
 
 | Variable | Why change it |
 |---|---|
-| `RCLONE_VFS_CACHE_MAX_SIZE` | Default is `8G`. Reduce to `4G` if disk is tight. |
-| `RCLONE_DIR_CACHE_TIME` | Default is `5m`. Increase to `30m` to reduce API calls. |
-| `RCLONE_TIMEOUT` | Default is `120s`. Increase to `300s` for slow connections. |
+| `IMMICH_VERSION` | Default `v2`. Pin to a specific release (e.g. `v2.1.0`). |
+| `DB_USERNAME` | Default `immich`. |
+| `DB_DATABASE_NAME` | Default `immich`. |
 
 ### Configure reverse proxy
 
-1. In the Coolify UI, under the **immich-server** service, set the **Domains** field to your URL (e.g. `https://photos.example.com`).
+1. Under **immich-server**, set the **Domains** field to your URL (e.g. `https://photos.example.com`).
 2. Coolify generates Traefik labels and routes traffic to port `2283`.
 
 ---
 
 ## Step 3: Deploy
 
-1. Click **Deploy** in the Coolify UI.
-2. The first deployment takes 5–10 minutes (rclone compiles from Go source).
+1. Click **Deploy**.
+2. First deploy takes 1-2 minutes (just pulling images — no build step).
 3. Watch the logs:
-   - **rclone**: Should show `Setting up mount propagation (rshared)`, then `Starting rclone mount`
-   - **immich-microservices**: Starts after rclone passes healthchecks, runs DB migrations
-   - **immich-server**: Starts after microservices passes healthchecks
+   - **immich-microservices**: Runs DB migrations
+   - **immich-server**: Starts API + web UI
 
 ---
 
@@ -97,7 +72,7 @@ See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for the full list. Common overrides:
 
 ### Create Admin Account
 
-Open your domain (e.g. `https://photos.example.com`) and create the admin account.
+Open your domain and create the admin account.
 
 ### Register the External Library
 
@@ -106,104 +81,67 @@ Open your domain (e.g. `https://photos.example.com`) and create the admin accoun
 3. Set the **Import Path** to `/mnt/external-library`
 4. Save → Click **Scan**
 
-> **First scan is slow** — every file downloads from Internxt and decrypts through E2E. 10k photos may take 2–4 hours. This is expected. Subsequent scans are fast.
-
----
-
-## How rclone.conf Is Generated
-
-The entrypoint script auto-generates `/config/rclone/rclone.conf` from environment variables on every container start:
-
-```ini
-[MyInternxt]
-type = internxt
-email = you@domain.com
-pass = <obscured by rclone>
-totp_secret = JBSWY3DPEHPK3PXP
-```
-
-This means:
-- **No manual rclone config** — just set env vars in Coolify
-- **Credential changes** — update env vars in Coolify UI, redeploy
-- **Config persists** in the `rclone_config` named volume between restarts, but is regenerated on each start from env vars
-
----
-
-## How Mount Propagation Works
-
-The rclone container has `SYS_ADMIN` and on startup runs `mount --make-rshared /` to ensure the host's mount namespace allows propagation. Key details:
-
-| Issue | How it's handled |
-|---|---|
-| Host namespace not shared | `mount --make-rshared /` runs on every rclone startup |
-| Stale mount after crash | Escalating cleanup: `fusermount -uz` → `umount -l` → `umount -f` |
-| App starts before mount ready | Healthcheck uses `mountpoint -q` with 90s start period |
-| Race conditions | immich-server waits for rclone healthy + microservices healthy |
-
-> **Limitation**: Bind propagation does not work on Docker Desktop (Windows/macOS). Your Coolify host must be native Linux.
-
----
-
-## How Volumes Work
-
-| Volume | Type | Purpose |
-|---|---|---|
-| `rclone_config` | Named | Auto-generated `rclone.conf` |
-| `rclone_cache` | Named | VFS cache (hard-capped at 8G) |
-| `upload_data` | Named | Immich user uploads |
-| `ml_cache` | Named | ML model cache |
-| `postgres_data` | Named | Database |
-| `redis_data` | Named | Job queue |
-| `/mnt/immich-external-library` | Bind mount | FUSE mount point (auto-created, rshared) |
-
-Only the FUSE mount point uses a host bind mount (required for mount propagation between containers). Docker creates this directory automatically — no manual creation needed.
+> **First scan is slow** — every file downloads from Internxt and decrypts through E2E. 10k photos may take 2–4 hours. Subsequent scans are fast.
 
 ---
 
 ## Troubleshooting
 
-### rclone container exits immediately
+### Mount not visible in containers
+
+Check the host mount first:
 
 ```bash
-docker logs immich-rclone 2>&1 | tail -30
+ls /mnt/immich-external-library
 ```
 
-Common causes:
-- **`INTERNXT_EMAIL must be set`**: Missing required variable in Coolify UI.
-- **`/dev/fuse not found`**: FUSE kernel module not available. Run `modprobe fuse` on the host.
-- **Authentication failure**: Verify `INTERNXT_EMAIL`, `INTERNXT_PASSWORD`, and `INTERNXT_TOTP_SECRET` are correct.
+If empty or missing:
 
-### rclone healthcheck fails
+```bash
+sudo systemctl status immich-rclone
+journalctl -u immich-rclone -f
+```
 
-- Internxt auth with 2FA can take 30–60s. The 90s `start_period` handles this.
-- Verify Internxt credentials are correct.
-- Check logs: `docker logs immich-rclone -f`
-- Empty remotes now pass the default healthcheck. Set `RCLONE_HEALTHCHECK_REQUIRE_CONTENTS=true` only if you want startup to fail on an empty library.
+### rclone service won't start
 
-### FUSE mount not visible to Immich
-
-- Verify rclone logs show `mount --make-rshared /` without error.
-- Verify the rclone healthcheck passes (container must be "Healthy").
-- Check the host kernel supports bind propagation (must be native Linux, not Docker Desktop).
-- Last resort: SSH to host and run `sudo mount --make-rshared /mnt`.
+- Check credentials: `sudo cat /etc/immich-rclone/rclone.conf`
+- Fix and restart: `sudo systemctl restart immich-rclone`
+- Auth issues with 2FA: check `journalctl -u immich-rclone -f`
 
 ### Cache filling up disk
 
 ```bash
-docker exec immich-rclone du -sh /cache/vfs
+du -sh /var/cache/immich-rclone
 ```
 
-- Hard-capped at `RCLONE_VFS_CACHE_MAX_SIZE` (default 8G).
-- Reduce to `4G` if needed. Set shorter `RCLONE_VFS_CACHE_MAX_AGE` (e.g. `12h`).
+Edit cache limit:
+
+```bash
+sudo nano /etc/immich-rclone/mount.env
+# Change RCLONE_VFS_CACHE_MAX_SIZE=4G (for example)
+sudo systemctl restart immich-rclone
+```
 
 ### Slow scans
 
-- **First scan is always slow** — E2E encryption requires full file download before reading.
-- Increase `RCLONE_DIR_CACHE_TIME` to `30m` to reduce API calls.
-- Keep `RCLONE_TRANSFERS` at `2` — higher values trigger rate limits.
-- Subsequent scans are fast (only changed files re-downloaded).
+- **First scan is always slow** — E2E encryption requires full file download.
+- Subsequent scans only re-download changed files.
+- To tune: edit `/etc/immich-rclone/mount.env` and adjust `RCLONE_DIR_CACHE_TIME`, `RCLONE_TRANSFERS`, etc.
 
-### Rebuilding after fork changes
+### Update Internxt credentials
 
-- **Redeploy** with **Force Rebuild** in Coolify UI.
-- To use a different fork branch, set `RCLONE_BRANCH` in the environment variables.
+```bash
+sudo nano /etc/immich-rclone/rclone.conf
+sudo systemctl restart immich-rclone
+```
+
+Or re-run the install script — it preserves your settings.
+
+### Update rclone to latest fork version
+
+```bash
+cd /opt/immich-rclone
+sudo bash install.sh
+```
+
+It will recompile and restart the service.

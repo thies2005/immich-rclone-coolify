@@ -1,19 +1,6 @@
 # Environment Variables — Coolify Deployment
 
-Paste these into the Coolify service configuration UI. Most variables have sane defaults — you only **must** set the ones marked **Required**.
-
----
-
-## Internxt Connection (Required)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `INTERNXT_EMAIL` | **Yes** | — | Your Internxt account email. |
-| `INTERNXT_PASSWORD` | **Yes** | — | Your Internxt account password. |
-| `INTERNXT_REMOTE_NAME` | No | `MyInternxt` | Name for the rclone remote. Only change if you want a custom name. |
-| `INTERNXT_TOTP_SECRET` | No | *(empty)* | Base32 TOTP secret from your authenticator app. **Required if your Internxt account has 2FA enabled.** Not a one-time code — it's the permanent secret key. If your account doesn't use 2FA, leave this empty. |
-
-> **How to get `INTERNXT_TOTP_SECRET`:** When you originally set up 2FA on your Internxt account, you scanned a QR code with an authenticator app. That QR code encodes a `secret=` parameter in base32 (e.g. `JBSWY3DPEHPK3PXP`). That value is your TOTP secret. If you no longer have it, disable and re-enable 2FA on your Internxt account to get a new one.
+Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 
 ---
 
@@ -31,86 +18,61 @@ Paste these into the Coolify service configuration UI. Most variables have sane 
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `IMMICH_VERSION` | No | `v2` | Immich image tag used for `ghcr.io/immich-app/immich-server` and `ghcr.io/immich-app/immich-machine-learning`. Pin to a version (e.g. `v2.1.0`) for reproducibility. |
-| `IMMICH_HTTP_PORT` | No | `2283` | Host port for the web interface. Coolify's reverse proxy usually handles this. |
+| `IMMICH_VERSION` | No | `v2` | Immich image tag. Pin to a version (e.g. `v2.1.0`) for reproducibility. |
 
 ---
 
-## rclone Build
+## rclone (configured on the host)
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `RCLONE_REPO` | No | `https://github.com/thies2005/rclone.git` | Git URL of the rclone fork to build from. |
-| `RCLONE_BRANCH` | No | `master` | Branch to clone during build. |
+rclone settings are NOT Docker env vars in this setup. They live in:
 
----
-
-## rclone Cache (50 GB Budget)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `RCLONE_VFS_CACHE_MAX_SIZE` | No | `8G` | Hard ceiling for VFS cache. The container enforces this limit. Keep at or below `8G` to stay within the 50 GB budget. |
-| `RCLONE_VFS_CACHE_MAX_AGE` | No | `48h` | Evict cached files after this idle duration. |
-| `RCLONE_VFS_CACHE_POLL_INTERVAL` | No | `30s` | How often rclone scans the cache for eviction. |
-
----
-
-## rclone Tuning (Internxt E2E Optimized)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `RCLONE_VFS_CACHE_MODE` | No | `full` | **Forced to `full` — cannot be changed.** Internxt E2E encryption requires full-file caching. The entrypoint silently overrides any other value. |
-| `RCLONE_BUFFER_SIZE` | No | `64M` | Per-file read buffer. |
-| `RCLONE_READ_AHEAD` | No | `128M` | Sequential read-ahead for photo/video scanning. |
-| `RCLONE_DIR_CACHE_TIME` | No | `5m` | Directory listing cache TTL. |
-| `RCLONE_TRANSFERS` | No | `2` | Parallel file transfers. Keep low to avoid Internxt rate limits. |
-| `RCLONE_CHECKERS` | No | `4` | Parallel file checkers. |
-| `RCLONE_RETRIES` | No | `5` | Retries per failed operation. |
-| `RCLONE_LOW_LEVEL_RETRIES` | No | `10` | Low-level HTTP retries. |
-| `RCLONE_TIMEOUT` | No | `120s` | Idle timeout. Accounts for E2E decryption latency. |
-| `RCLONE_CONTIMEOUT` | No | `30s` | Connection establishment timeout. |
-| `RCLONE_NO_CHECKSUM` | No | `true` | Skip checksums — Internxt E2E can cause false mismatches. |
-| `RCLONE_EXTRA_MOUNT_ARGS` | No | *(empty)* | Reserved. Non-empty values are rejected for safety because raw shell-passed flags can override required mount settings. |
-
----
-
-## FUSE Mount Point
-
-The FUSE mount point is fixed in `docker-compose.yml` for Coolify compatibility:
-
-| Path | Purpose |
+| File | Purpose |
 |---|---|
-| `/mnt/immich-external-library` | Host bind path used for mount propagation between `rclone` and `immich-server` |
-| `/mnt/external-library` | In-container mount path used by Immich for the external library |
+| `/etc/immich-rclone/rclone.conf` | Internxt credentials (email, password, TOTP) |
+| `/etc/immich-rclone/mount.env` | Mount settings (cache size, timeouts, etc.) |
 
-Coolify rejects `${...}` interpolation inside Docker volume targets and bind sources, so these paths are intentionally hard-coded.
+To change rclone settings, edit those files on the host and run `sudo systemctl restart immich-rclone`.
+
+### Host rclone settings (in `/etc/immich-rclone/mount.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `RCLONE_VFS_CACHE_MAX_SIZE` | `8G` | Hard ceiling for VFS cache. |
+| `RCLONE_VFS_CACHE_MAX_AGE` | `48h` | Evict cached files after this idle duration. |
+| `RCLONE_BUFFER_SIZE` | `64M` | Per-file read buffer. |
+| `RCLONE_READ_AHEAD` | `128M` | Sequential read-ahead for photo/video scanning. |
+| `RCLONE_DIR_CACHE_TIME` | `5m` | Directory listing cache TTL. |
+| `RCLONE_TRANSFERS` | `2` | Parallel file transfers. Keep low to avoid Internxt rate limits. |
+| `RCLONE_CHECKERS` | `4` | Parallel file checkers. |
+| `RCLONE_RETRIES` | `5` | Retries per failed operation. |
+| `RCLONE_LOW_LEVEL_RETRIES` | `10` | Low-level HTTP retries. |
+| `RCLONE_TIMEOUT` | `120s` | Idle timeout. |
+| `RCLONE_CONTIMEOUT` | `30s` | Connection timeout. |
 
 ---
 
 ## Minimum Configuration (copy-paste into Coolify)
 
 ```
-INTERNXT_EMAIL=you@domain.com
-INTERNXT_PASSWORD=your-internxt-password
-INTERNXT_TOTP_SECRET=JBSWY3DPEHPK3PXP
 DB_PASSWORD=a-strong-random-password
 ```
 
 That's it. Everything else has working defaults.
 
+Internxt credentials are configured during `install.sh` on the host, not in Coolify.
+
 ---
 
-## 50 GB Storage Budget
+## Storage Budget
 
-| Component | Volume | Allocation | Notes |
+| Component | Location | Allocation | Notes |
 |---|---|---|---|
 | PostgreSQL | `postgres_data` | ~2 GB | Grows with metadata. |
 | Immich uploads | `upload_data` | ~4 GB | User originals. |
 | ML model cache | `ml_cache` | ~3 GB | Face/recognition models. |
-| Redis | `redis_data` | <100 MB | LRU-evicted. |
-| rclone VFS cache | `rclone_cache` | **~8 GB** | Hard-capped by `RCLONE_VFS_CACHE_MAX_SIZE`. |
-| rclone config | `rclone_config` | <1 MB | Auto-generated rclone.conf. |
-| Docker images + OS | *(Docker root)* | ~5 GB | Build artifacts. |
-| External library | *(FUSE mount)* | **0 GB** | Served from Internxt. |
+| Redis | `redis_data` | <100 MB | |
+| rclone VFS cache | `/var/cache/immich-rclone/` | **~8 GB** | Hard-capped on host. |
+| External library | FUSE mount | **0 GB** | Served from Internxt. |
+| Docker + OS | Docker root | ~5 GB | Build artifacts. |
 | **Total used** | | **~22 GB** | |
 | **Headroom** | | **~28 GB** | |
