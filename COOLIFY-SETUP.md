@@ -139,9 +139,10 @@ Or re-run the install script — it preserves your settings.
 
 ### Update rclone to latest fork version
 
+Re-running the install script will rebuild rclone from the latest fork source and restart the service. Existing credentials and settings are preserved:
+
 ```bash
-cd /opt/immich-rclone
 sudo bash install.sh
 ```
 
-It will recompile and restart the service.
+The script detects the existing config and skips the credential prompt.

@@ -35,19 +35,17 @@ fi
 
 # ── Preflight checks ──────────────────────────────────────────
 
-if ! mount | grep -q "/sys/fs/cgroup"; then
-    warn "/sys/fs/cgroup is not mounted — FUSE may not work"
-    warn "This usually means you are in a container. Install on the real host."
-fi
-
 if [ ! -e /dev/fuse ]; then
     warn "/dev/fuse not found. Trying modprobe fuse..."
     modprobe fuse 2>/dev/null || fail "Cannot load fuse kernel module. FUSE is required."
 fi
 ok "FUSE kernel module available"
 
-if ! command -v gcc &>/dev/null && ! command -v go &>/dev/null; then
-    info "Go not found yet — will be installed below"
+RERUN=0
+if [ -f "${CONFIG_DIR}/rclone.conf" ] && [ -f "${CONFIG_DIR}/mount.env" ]; then
+    RERUN=1
+    info "Existing configuration detected at ${CONFIG_DIR}"
+    info "This is a re-run — credentials preserved, rclone will be rebuilt."
 fi
 
 # ── Prompt ─────────────────────────────────────────────────────
@@ -55,9 +53,13 @@ fi
 info "This will:"
 echo "  1. Install build dependencies (git, golang, fuse3)"
 echo "  2. Compile the custom rclone fork with Internxt + 2FA support"
-echo "  3. Ask for your Internxt credentials"
-echo "  4. Create a systemd service that auto-mounts on boot"
-echo "  5. Create the mount point at ${MOUNT_POINT}"
+if [ "$RERUN" = "0" ]; then
+    echo "  3. Ask for your Internxt credentials"
+    echo "  4. Create a systemd service that auto-mounts on boot"
+    echo "  5. Create the mount point at ${MOUNT_POINT}"
+else
+    echo "  3. Restart the systemd service with the rebuilt binary"
+fi
 echo ""
 echo "  Your Coolify Docker containers will access files via bind mount."
 echo ""
@@ -108,7 +110,7 @@ mkdir -p "${INSTALL_DIR}"
     cd "${TMPDIR}/rclone"
     CGO_ENABLED=0 go build -v -ldflags "-s" -o "${INSTALL_DIR}/rclone" .
 )
-ok "rclone compiled → ${INSTALL_DIR}/rclone"
+ok "rclone compiled -> ${INSTALL_DIR}/rclone"
 
 rm -rf "${TMPDIR}"
 ok "Build artifacts cleaned up"
@@ -121,57 +123,61 @@ ok "Directories created"
 
 # ── Gather credentials ────────────────────────────────────────
 
-echo ""
-echo "══════════════════════════════════════════════════════════════"
-echo "  Internxt Credentials"
-echo "══════════════════════════════════════════════════════════════"
-echo ""
+if [ "$RERUN" = "1" ]; then
+    REMOTE_NAME=$(grep '^\[' "${CONFIG_DIR}/rclone.conf" | head -1 | tr -d '[]')
+    ok "Re-using existing credentials from ${CONFIG_DIR}/rclone.conf (remote: ${REMOTE_NAME})"
+else
+    echo ""
+    echo "══════════════════════════════════════════════════════════════"
+    echo "  Internxt Credentials"
+    echo "══════════════════════════════════════════════════════════════"
+    echo ""
 
-read -rp "Internxt email: " INTERNXT_EMAIL
-while [ -z "${INTERNXT_EMAIL}" ]; do
-    warn "Email cannot be empty."
     read -rp "Internxt email: " INTERNXT_EMAIL
-done
+    while [ -z "${INTERNXT_EMAIL}" ]; do
+        warn "Email cannot be empty."
+        read -rp "Internxt email: " INTERNXT_EMAIL
+    done
 
-while true; do
-    read -rsp "Internxt password: " INTERNXT_PASSWORD
-    echo ""
-    [ -n "${INTERNXT_PASSWORD}" ] && break
-    warn "Password cannot be empty."
-done
+    while true; do
+        read -rsp "Internxt password: " INTERNXT_PASSWORD
+        echo ""
+        [ -n "${INTERNXT_PASSWORD}" ] && break
+        warn "Password cannot be empty."
+    done
 
-while true; do
-    read -rsp "Confirm password: " INTERNXT_PASSWORD2
-    echo ""
-    [ "$INTERNXT_PASSWORD" = "$INTERNXT_PASSWORD2" ] && break
-    warn "Passwords don't match. Try again."
-done
+    while true; do
+        read -rsp "Confirm password: " INTERNXT_PASSWORD2
+        echo ""
+        [ "$INTERNXT_PASSWORD" = "$INTERNXT_PASSWORD2" ] && break
+        warn "Passwords don't match. Try again."
+    done
 
-read -rp "TOTP secret (leave empty if no 2FA): " INTERNXT_TOTP_SECRET
+    read -rp "TOTP secret (leave empty if no 2FA): " INTERNXT_TOTP_SECRET
 
-read -rp "Remote name [MyInternxt]: " REMOTE_NAME
-REMOTE_NAME="${REMOTE_NAME:-MyInternxt}"
+    read -rp "Remote name [MyInternxt]: " REMOTE_NAME
+    REMOTE_NAME="${REMOTE_NAME:-MyInternxt}"
 
-# ── Generate rclone.conf ──────────────────────────────────────
+    # ── Generate rclone.conf ──────────────────────────────────────
 
-OBSCURED_PASS=$("${INSTALL_DIR}/rclone" obscure "${INTERNXT_PASSWORD}")
+    OBSCURED_PASS=$("${INSTALL_DIR}/rclone" obscure "${INTERNXT_PASSWORD}")
 
-{
-    echo "[${REMOTE_NAME}]"
-    echo "type = internxt"
-    echo "email = ${INTERNXT_EMAIL}"
-    echo "pass = ${OBSCURED_PASS}"
-    if [ -n "${INTERNXT_TOTP_SECRET}" ]; then
-        echo "totp_secret = ${INTERNXT_TOTP_SECRET}"
-    fi
-} > "${CONFIG_DIR}/rclone.conf"
+    {
+        echo "[${REMOTE_NAME}]"
+        echo "type = internxt"
+        echo "email = ${INTERNXT_EMAIL}"
+        echo "pass = ${OBSCURED_PASS}"
+        if [ -n "${INTERNXT_TOTP_SECRET}" ]; then
+            echo "totp_secret = ${INTERNXT_TOTP_SECRET}"
+        fi
+    } > "${CONFIG_DIR}/rclone.conf"
 
-chmod 600 "${CONFIG_DIR}/rclone.conf"
-ok "rclone.conf saved to ${CONFIG_DIR}/rclone.conf"
+    chmod 600 "${CONFIG_DIR}/rclone.conf"
+    ok "rclone.conf saved to ${CONFIG_DIR}/rclone.conf"
 
-# ── Generate mount.env ─────────────────────────────────────────
+    # ── Generate mount.env ─────────────────────────────────────────
 
-cat > "${CONFIG_DIR}/mount.env" <<ENVEOF
+    cat > "${CONFIG_DIR}/mount.env" <<ENVEOF
 REMOTE_NAME=${REMOTE_NAME}
 MOUNT_POINT=${MOUNT_POINT}
 CACHE_DIR=${CACHE_DIR}
@@ -192,7 +198,8 @@ RCLONE_LOW_LEVEL_RETRIES=10
 RCLONE_TIMEOUT=300s
 RCLONE_CONTIMEOUT=30s
 ENVEOF
-ok "mount.env saved to ${CONFIG_DIR}/mount.env"
+    ok "mount.env saved to ${CONFIG_DIR}/mount.env"
+fi
 
 # ── Helper: cleanup script ────────────────────────────────────
 
@@ -269,30 +276,20 @@ MOUNTEOF
 chmod +x "${INSTALL_DIR}/rclone-fuse-mount.sh" "${INSTALL_DIR}/rclone-fuse-cleanup.sh"
 ok "Helper scripts installed"
 
-# ── Helper: post-mount healthcheck ─────────────────────────────
+# ── Log rotation ──────────────────────────────────────────────
 
-cat > "${INSTALL_DIR}/rclone-wait-ready.sh" <<'WAITEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-source /etc/immich-rclone/mount.env
-
-MAX_WAIT=60
-for i in $(seq 1 $MAX_WAIT); do
-    if mountpoint -q "${MOUNT_POINT}" 2>/dev/null; then
-        if ls "${MOUNT_POINT}" &>/dev/null; then
-            echo "[rclone-wait] Mount ready after ${i}s"
-            exit 0
-        fi
-    fi
-    sleep 1
-done
-
-echo "[rclone-wait] WARNING: Mount not ready after ${MAX_WAIT}s"
-exit 1
-WAITEOF
-
-chmod +x "${INSTALL_DIR}/rclone-wait-ready.sh"
+cat > "/etc/logrotate.d/immich-rclone" <<'LOGROTEOF'
+/var/log/immich-rclone/rclone.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+LOGROTEOF
+ok "Log rotation configured (/etc/logrotate.d/immich-rclone)"
 
 # ── Systemd service ────────────────────────────────────────────
 
@@ -308,7 +305,6 @@ EnvironmentFile=${CONFIG_DIR}/mount.env
 ExecStartPre=-${INSTALL_DIR}/rclone-fuse-cleanup.sh
 ExecStart=${INSTALL_DIR}/rclone-fuse-mount.sh
 ExecStop=${INSTALL_DIR}/rclone-fuse-cleanup.sh
-ExecStopPost=-${INSTALL_DIR}/rclone-fuse-cleanup.sh
 Restart=always
 RestartSec=15
 KillMode=mixed
@@ -329,7 +325,7 @@ systemctl enable "${SERVICE_NAME}"
 ok "Service enabled (starts on boot)"
 
 info "Starting mount..."
-systemctl start "${SERVICE_NAME}" || true
+systemctl restart "${SERVICE_NAME}" || true
 
 info "Waiting for FUSE mount to be ready..."
 MAX_WAIT=60
@@ -367,7 +363,7 @@ echo ""
 echo "  Next steps:"
 echo "  1. Verify:    ls ${MOUNT_POINT}"
 echo "  2. Deploy the Docker Compose stack from Coolify"
-echo "  3. In Immich: Administration → External Libraries → /mnt/external-library"
+echo "  3. In Immich: Administration -> External Libraries -> /mnt/external-library"
 echo ""
 echo "  Useful commands:"
 echo "    systemctl status ${SERVICE_NAME}       # service status"
