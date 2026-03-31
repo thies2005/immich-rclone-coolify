@@ -257,7 +257,6 @@ exec "${RCLONE_BIN}" mount \
     --vfs-read-ahead "${RCLONE_READ_AHEAD}" \
     --vfs-cache-poll-interval "${RCLONE_VFS_CACHE_POLL_INTERVAL}" \
     --dir-cache-time "${RCLONE_DIR_CACHE_TIME}" \
-
     --transfers "${RCLONE_TRANSFERS}" \
     --checkers "${RCLONE_CHECKERS}" \
     --retries "${RCLONE_RETRIES}" \
