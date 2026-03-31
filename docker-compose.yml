@@ -30,6 +30,8 @@ services:
         source: /mnt/immich-external-library
         target: /mnt/external-library
         read_only: true
+        bind:
+          propagation: rslave
     networks:
       - immich-net
     healthcheck:
@@ -61,6 +63,8 @@ services:
         source: /mnt/immich-external-library
         target: /mnt/external-library
         read_only: true
+        bind:
+          propagation: rslave
     networks:
       - immich-net
     healthcheck:

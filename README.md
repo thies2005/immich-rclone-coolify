@@ -105,18 +105,22 @@ Click **Deploy**.
 
 First scan is slow (2-4 hours for 10k photos) — every file downloads and decrypts through E2E. Subsequent scans are fast.
 
-## 50 GB Storage Budget
+## Disk Usage
 
 | Component | Path | Allocation |
 |---|---|---|
-| rclone VFS cache | `/var/cache/immich-rclone/` | **8 GB** (hard cap) |
+| rclone VFS cache | `/var/cache/immich-rclone/` | **32 GB** (hard cap) |
 | Immich uploads | `upload_data` | ~4 GB |
 | ML model cache | `ml_cache` | ~3 GB |
 | PostgreSQL | `postgres_data` | ~2 GB |
 | Redis | `redis_data` | <100 MB |
 | Docker + OS | *(Docker root)* | ~5 GB |
 | External library | *(FUSE mount)* | **0 GB** — Internxt |
-| **Headroom** | | **~28 GB** |
+| **Total** | | **~46 GB** |
+
+> **Note:** A 50 GB disk leaves very little headroom. If disk is tight, reduce
+> `RCLONE_VFS_CACHE_MAX_SIZE` in `/etc/immich-rclone/mount.env` to a smaller
+> value (e.g. `16G`) and restart the service.
 
 ## Useful Commands
 
