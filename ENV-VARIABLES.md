@@ -1,4 +1,4 @@
-# Environment Variables — Coolify Deployment
+# Environment Variables
 
 Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 
@@ -8,7 +8,7 @@ Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `DB_PASSWORD` | **Yes** | — | PostgreSQL password. **Set a strong random password.** |
+| `DB_PASSWORD` | **Yes** | -- | PostgreSQL password. **Set a strong random password.** |
 | `DB_USERNAME` | No | `immich` | PostgreSQL user. |
 | `DB_DATABASE_NAME` | No | `immich` | PostgreSQL database name. |
 
@@ -19,12 +19,44 @@ Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `IMMICH_VERSION` | No | `v2` | Immich image tag. Pin to a version (e.g. `v2.1.0`) for reproducibility. |
+| `IMMICH_PORT` | No | `2283` | Host port for direct HTTP access (standalone deployment only). |
+
+---
+
+## Reverse Proxy (standalone deployment only)
+
+These variables are used when deploying with `docker-compose.standalone.yml`. Coolify handles its own reverse proxy via Traefik.
+
+### Caddy (Option A)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DOMAIN` | Yes* | -- | Your domain name (e.g. `photos.example.com`). DNS must point to your server. |
+| `CADDY_ACME_EMAIL` | Yes* | -- | Email for Let's Encrypt certificate notifications. |
+
+*Required when using the Caddy service.
+
+### Cloudflare Tunnel (Option B)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CLOUDFLARE_TOKEN` | Yes* | -- | Tunnel token from [Cloudflare Zero Trust](https://one.dash.cloudflare.com). |
+
+*Required when using the Cloudflare Tunnel service.
+
+### Tailscale Serve (Option C)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `TS_AUTHKEY` | Yes* | -- | Auth key from [Tailscale admin](https://login.tailscale.com/admin/settings/keys). Enable "Reusable". |
+
+*Required when using the Tailscale service.
 
 ---
 
 ## rclone (configured on the host)
 
-rclone settings are NOT Docker env vars in this setup. They live in:
+rclone settings are NOT Docker env vars. They live in:
 
 | File | Purpose |
 |---|---|
@@ -52,15 +84,21 @@ To change rclone settings, edit those files on the host and run `sudo systemctl 
 
 ---
 
-## Minimum Configuration (copy-paste into Coolify)
+## Quick Start
 
+### Standalone Docker deployment
+
+```bash
+cp .env.example .env
+# Edit .env -- set DB_PASSWORD at minimum
+docker compose -f docker-compose.standalone.yml up -d
 ```
-DB_PASSWORD=a-strong-random-password
-```
 
-That's it. Everything else has working defaults.
+### Coolify deployment
 
-Internxt credentials are configured during `install.sh` on the host, not in Coolify.
+Set `DB_PASSWORD` in the Coolify resource settings. That's it.
+
+Internxt credentials are configured during `install.sh` on the host, not in Docker/Coolify.
 
 ---
 

@@ -1,0 +1,3 @@
+{$DOMAIN} {
+	reverse_proxy immich-server:2283
+}

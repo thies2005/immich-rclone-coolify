@@ -1,11 +1,12 @@
 <div align="center">
 
-# Immich + Internxt on Coolify
+# Immich + Internxt
 
 **Self-hosted photo management backed by Internxt's encrypted cloud storage.**
 
 [![GitHub](https://img.shields.io/badge/repo-thies2005%2Fimmich--rclone--coolify-181717?logo=github)](https://github.com/thies2005/immich-rclone-coolify)
-[![Coolify](https://img.shields.io/badge/deploy-Coolify-blue)](https://coolify.io)
+[![Docker](https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker)](DOCKER-SETUP.md)
+[![Coolify](https://img.shields.io/badge/deploy-Coolify-blue)](COOLIFY-SETUP.md)
 [![Immich](https://img.shields.io/badge/Immich-v2-4250af?logo=immich)](https://immich.app)
 [![Internxt](https://img.shields.io/badge/Internxt-E2E%20encrypted-0066ff)](https://internxt.com)
 [![rclone](https://img.shields.io/badge/rclone-custom%20fork-orange?logo=rclone)](https://github.com/thies2005/rclone)
@@ -24,7 +25,7 @@ Uses a [custom rclone fork](https://github.com/thies2005/rclone) with automatic 
 
 ```
   Your browser ──> Immich (Docker) ──> Host FUSE mount ──> Internxt Cloud
-      (photos)       (Coolify)         (rclone on host)     (encrypted)
+      (photos)       (Docker/Coolify)   (rclone on host)    (encrypted)
 ```
 
 rclone runs on the **host** as a systemd service. Docker containers access the files through a bind mount. No privileged containers, no mount propagation hacks.
@@ -41,7 +42,7 @@ rclone runs on the **host** as a systemd service. Docker containers access the f
 │  └──────────────────────┬───────────────────────┘    │
 │                         │ bind mount (read-only)     │
 │  ┌──────────────────────▼───────────────────────┐    │
-│  │  Docker (managed by Coolify)                  │    │
+│  │  Docker (managed by Docker Compose / Coolify)          │    │
 │  │                                                │    │
 │  │  ┌──────────────┐  ┌─────────────────────┐   │    │
 │  │  │ immich-server│  │ immich-microservices│   │    │
@@ -58,16 +59,27 @@ rclone runs on the **host** as a systemd service. Docker containers access the f
    Internxt Cloud Storage
 ```
 
+## Deployment Options
+
+| Option | Guide | Best For |
+|---|---|---|
+| **Docker Compose** | [`DOCKER-SETUP.md`](DOCKER-SETUP.md) | Any Linux server with Docker. Includes Caddy, Cloudflare Tunnel, or Tailscale proxy options. |
+| **Coolify** | [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Servers already running Coolify. Deploys as a managed stack with Traefik. |
+
+Both options share the same rclone host setup (Step 1 below) and the same Immich configuration. The only difference is how Docker is managed.
+
+---
+
 ## Prerequisites
 
-- A **Linux server** with Docker and [Coolify](https://coolify.io) installed
+- A **Linux server** with Docker installed
 - At least **50 GB disk** (32 GB for rclone cache, rest for Immich)
 - SSH access to the server (one-time, to run the install script)
 - An **Internxt** account (with or without 2FA)
 
-## Step-by-Step Setup
+## Step 1: Install rclone on the Host
 
-### Step 1: Download the install script
+This step is the same for both deployment options.
 
 SSH into your server and clone the repo (or just download `install.sh`):
 
@@ -76,7 +88,7 @@ git clone -b host-rclone https://github.com/thies2005/immich-rclone-coolify.git
 cd immich-rclone-coolify
 ```
 
-### Step 2: Run the install script
+Run the install script:
 
 ```bash
 sudo bash install.sh
@@ -108,7 +120,7 @@ The script will walk you through everything:
 
 > **Getting your TOTP secret:** When you originally set up 2FA on your Internxt account, you scanned a QR code. That QR code contains a `secret=` parameter in base32 (e.g. `JBSWY3DPEHPK3PXP`). That is your TOTP secret. It is NOT a one-time code from your authenticator app. If you lost it, disable and re-enable 2FA on your Internxt account to get a new one.
 
-### Step 3: Verify the mount
+## Step 2: Verify the Mount
 
 ```bash
 ls /mnt/immich-external-library
@@ -121,47 +133,33 @@ journalctl -u immich-rclone -f
 tail -f /var/log/immich-rclone/rclone.log
 ```
 
-### Step 4: Add the stack to Coolify
+## Step 3: Deploy Immich
 
-1. Open your **Coolify UI**
-2. Go to **Project -> New Resource -> Docker Compose (from GitHub)**
-3. Select repository: **`thies2005/immich-rclone-coolify`**
-4. Set the branch to **`host-rclone`**
-5. The `docker-compose.yml` is at the repo root -- no base directory change needed
+Follow the guide for your chosen deployment method:
 
-### Step 5: Set the database password
+### Docker Compose (Recommended)
 
-In the Coolify resource settings, add this **required** environment variable:
+See **[`DOCKER-SETUP.md`](DOCKER-SETUP.md)** for step-by-step instructions.
 
-```
-DB_PASSWORD=a-strong-random-password
+```bash
+cp .env.example .env
+# Edit .env — set DB_PASSWORD at minimum
+docker compose -f docker-compose.standalone.yml up -d
 ```
 
-Generate a strong password, e.g. `openssl rand -hex 24`.
+Includes built-in options for Caddy (auto-HTTPS), Cloudflare Tunnel, or Tailscale Serve.
 
-That's the only variable you must set. Everything else has working defaults. See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for the full list.
+### Coolify
 
-### Step 6: Configure the reverse proxy
+See **[`COOLIFY-SETUP.md`](COOLIFY-SETUP.md)** for step-by-step instructions.
 
-1. In the Coolify UI, under the **immich-server** service settings
-2. Set the **Domains** field to your URL (e.g. `https://photos.example.com`)
-3. Coolify will auto-generate Traefik labels and route traffic to port 2283
+Add the repo as a Docker Compose stack from GitHub, set `DB_PASSWORD` in Coolify, and deploy.
 
-### Step 7: Deploy
+## Step 4: Create Your Admin Account
 
-1. Click **Deploy** in Coolify
-2. First deploy takes 1-2 minutes (pulling Docker images)
-3. Watch the container logs in Coolify:
-   - **immich-microservices** starts first -- runs database migrations
-   - **immich-server** starts after microservices passes healthchecks
-   - **immich-machine-learning** starts in parallel
+Open your Immich URL in a browser and create the admin account.
 
-### Step 8: Create your admin account
-
-1. Open your domain (e.g. `https://photos.example.com`) in a browser
-2. Create the admin account with your email and a password
-
-### Step 9: Add the External Library
+## Step 5: Add the External Library
 
 1. Log in to Immich
 2. Go to **Administration** (left sidebar) -> **External Libraries**
@@ -170,7 +168,7 @@ That's the only variable you must set. Everything else has working defaults. See
 5. Click **Save**
 6. Click the **Scan** button on the new library
 
-### Step 10: Wait for the first scan
+## Step 6: Wait for the First Scan
 
 The first scan downloads every file from Internxt and decrypts it through E2E encryption. This is slow:
 
@@ -334,6 +332,10 @@ This is expected. Internxt uses end-to-end encryption -- every file must be full
 |---|---|
 | `install.sh` | **Run this first** -- builds rclone, creates config, sets up systemd |
 | `docker-compose.yml` | Coolify deployment (Immich + Postgres + Redis) |
+| `docker-compose.standalone.yml` | Pure Docker deployment with Caddy/Cloudflare/Tailscale options |
+| `Caddyfile` | Caddy reverse proxy config (for standalone deployment) |
+| `.env.example` | Environment variable template (for standalone deployment) |
+| [`DOCKER-SETUP.md`](DOCKER-SETUP.md) | Pure Docker deployment guide |
 | [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Coolify-specific setup details |
 | [`ENV-VARIABLES.md`](ENV-VARIABLES.md) | All environment variables |
 
@@ -342,7 +344,8 @@ This is expected. Internxt uses end-to-end encryption -- every file must be full
 - [Immich](https://immich.app) -- self-hosted Google Photos alternative
 - [Internxt](https://internxt.com) -- zero-knowledge encrypted cloud storage
 - [rclone](https://rclone.org) -- cloud storage Swiss army knife (custom [fork](https://github.com/thies2005/rclone) with TOTP 2FA)
-- [Coolify](https://coolify.io) -- open-source PaaS
+- [Docker Compose](https://docs.docker.com/compose/) -- container orchestration
+- [Coolify](https://coolify.io) -- open-source PaaS (optional deployment method)
 
 ## License
 

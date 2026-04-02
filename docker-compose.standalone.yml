@@ -1,0 +1,255 @@
+name: immich
+
+# IMPORTANT: rclone must be installed on the host BEFORE deploying this stack.
+# Run: sudo bash install.sh  (from this repo root)
+# The host FUSE mount at /mnt/immich-external-library is shared to containers
+# via bind mount -- no mount propagation tricks needed.
+#
+# This compose file is for pure Docker deployment (no Coolify).
+# For Coolify deployment, use docker-compose.yml instead.
+#
+# REVERSE PROXY OPTIONS (uncomment ONE in the services section below):
+#
+#   Option A: Caddy        -- auto-HTTPS with Let's Encrypt
+#             Requires: DOMAIN and CADDY_ACME_EMAIL in .env
+#
+#   Option B: Cloudflare Tunnel -- route traffic through Cloudflare
+#             Requires: CLOUDFLARE_TOKEN in .env
+#             Create a tunnel at https://one.dash.cloudflare.com pointing
+#             to http://immich-server:2283
+#
+#   Option C: Tailscale Serve -- private access via your tailnet
+#             Requires: Tailscale installed on the host + TS_AUTHKEY in .env
+#             Your Immich instance will be reachable at
+#             https://immich.<your-tailnet-name>.ts.net
+
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    restart: unless-stopped
+    container_name: immich-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      immich-microservices:
+        condition: service_healthy
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: api
+    volumes:
+      - upload_data:/usr/src/app/upload
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        read_only: true
+        bind:
+          propagation: rslave
+    networks:
+      - immich-net
+    # Expose port 2283 for direct HTTP access (no proxy)
+    # Comment this out if using Caddy/Cloudflare/Tailscale for HTTPS
+    ports:
+      - "${IMMICH_PORT:-2283}:2283"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2283/api/server/ping"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  immich-microservices:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    restart: unless-stopped
+    container_name: immich-microservices
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: microservices
+    volumes:
+      - upload_data:/usr/src/app/upload
+      - type: bind
+        source: /mnt/immich-external-library
+        target: /mnt/external-library
+        read_only: true
+        bind:
+          propagation: rslave
+    networks:
+      - immich-net
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 1
+      start_period: 30s
+
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2}
+    restart: unless-stopped
+    container_name: immich-machine-learning
+    environment:
+      DB_HOSTNAME: postgres
+      DB_USERNAME: ${DB_USERNAME:-immich}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME:-immich}
+      DB_PORT: 5432
+      REDIS_HOSTNAME: redis
+      IMMICH_WORKERS_INCLUDE: machinelearning
+    volumes:
+      - upload_data:/usr/src/app/upload
+      - ml_cache:/cache
+    networks:
+      - immich-net
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  postgres:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    restart: unless-stopped
+    container_name: immich-postgres
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME:-immich}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - immich-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-immich} -d ${DB_DATABASE_NAME:-immich}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: docker.io/valkey/valkey:9@sha256:3eeb09785cd61ec8e3be35f8804c8892080f3ca21934d628abc24ee4ed1698f6
+    restart: unless-stopped
+    container_name: immich-redis
+    command: valkey-server --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    networks:
+      - immich-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ════════════════════════════════════════════════════════════════════
+  # REVERSE PROXY OPTIONS -- uncomment exactly ONE section below
+  # ════════════════════════════════════════════════════════════════════
+
+  # ─── Option A: Caddy (automatic HTTPS via Let's Encrypt) ──────────
+  # 1. Uncomment this entire caddy service block
+  # 2. Comment out the ports: section on immich-server above
+  # 3. Set DOMAIN and CADDY_ACME_EMAIL in your .env file
+  #
+  # caddy:
+  #   image: docker.io/library/caddy:2-alpine
+  #   restart: unless-stopped
+  #   container_name: immich-caddy
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "443:443/udp"
+  #   environment:
+  #     DOMAIN: ${DOMAIN}
+  #     ACME_EMAIL: ${CADDY_ACME_EMAIL}
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   networks:
+  #     - immich-net
+  #   depends_on:
+  #     - immich-server
+
+  # ─── Option B: Cloudflare Tunnel ──────────────────────────────────
+  # 1. Uncomment this entire cloudflared service block
+  # 2. Comment out the ports: section on immich-server above
+  # 3. Set CLOUDFLARE_TOKEN in your .env file
+  # 4. Create a tunnel at https://one.dash.cloudflare.com:
+  #    - Public hostname: photos.example.com
+  #    - Service URL: http://immich-server:2283
+  #
+  # cloudflared:
+  #   image: docker.io/cloudflare/cloudflared:latest
+  #   restart: unless-stopped
+  #   container_name: immich-cloudflared
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TOKEN}
+  #   networks:
+  #     - immich-net
+  #   depends_on:
+  #     - immich-server
+
+  # ─── Option C: Tailscale Serve ────────────────────────────────────
+  # 1. Uncomment this entire tailscale service block
+  # 2. Comment out the ports: section on immich-server above
+  # 3. Set TS_AUTHKEY in your .env file
+  #    (generate at https://login.tailscale.com/admin/settings/keys)
+  # 4. After first start, get your tailnet URL:
+  #    docker exec immich-tailscale tailscale status
+  # 5. Enable HTTPS: docker exec immich-tailscale tailscale cert
+  #
+  # tailscale:
+  #   image: docker.io/tailscale/tailscale:latest
+  #   restart: unless-stopped
+  #   container_name: immich-tailscale
+  #   hostname: immich
+  #   environment:
+  #     TS_AUTHKEY: ${TS_AUTHKEY}
+  #     TS_STATE_DIR: /var/lib/tailscale
+  #     TS_USERSPACE: "false"
+  #   volumes:
+  #     - ts_state:/var/lib/tailscale
+  #     - /dev/net/tun:/dev/net/tun
+  #   networks:
+  #     - immich-net
+  #   cap_add:
+  #     - net_admin
+  #     - sys_module
+  #   depends_on:
+  #     - immich-server
+
+networks:
+  immich-net:
+    driver: bridge
+
+volumes:
+  upload_data:
+  ml_cache:
+  postgres_data:
+  redis_data:
+  # caddy_data:     # uncomment if using Caddy
+  # caddy_config:   # uncomment if using Caddy
+  # ts_state:       # uncomment if using Tailscale
