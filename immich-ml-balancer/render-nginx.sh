@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+TEMPLATE="/etc/nginx/balancer.conf.template"
+OUTPUT="/etc/nginx/nginx.conf"
+
 sanitize_weight() {
   value="${1:-1}"
   case "$value" in
@@ -65,11 +68,13 @@ set_lb_method_directive() {
   esac
 }
 
+rm -f /etc/nginx/conf.d/default.conf
+
 ML_UPSTREAM_SERVERS="$(build_upstream_servers)"
 ML_LB_METHOD_DIRECTIVE="$(set_lb_method_directive)"
 export ML_UPSTREAM_SERVERS ML_LB_METHOD_DIRECTIVE
 
 envsubst '${ML_LB_KEEPALIVE} ${ML_UPSTREAM_SERVERS} ${ML_LB_METHOD_DIRECTIVE} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
-  < /etc/nginx/templates/nginx.conf.template > /etc/nginx/nginx.conf
+  < "$TEMPLATE" > "$OUTPUT"
 
 nginx -t
