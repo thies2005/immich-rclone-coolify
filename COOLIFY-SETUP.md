@@ -61,6 +61,7 @@ Notes:
 - `ML_BACKEND_1` defaults to `immich-machine-learning:3003`.
 - Keep additional backends empty unless used.
 - For weighted mode, set `ML_LB_METHOD=weighted`.
+- Backends must be `host:port` only. Do not include `http://`, `https://`, or trailing `/`.
 
 ### Optional
 

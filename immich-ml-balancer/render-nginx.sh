@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-TEMPLATE="/etc/nginx/balancer.conf.template"
+TEMPLATE="/opt/immich-ml-balancer/nginx.conf.template"
 OUTPUT="/etc/nginx/nginx.conf"
 
 sanitize_weight() {
@@ -29,6 +29,9 @@ build_upstream_servers() {
     weight_var="ML_BACKEND_${i}_WEIGHT"
 
     backend=$(eval "printf '%s' \"\${$backend_var:-}\"")
+    backend="${backend#http://}"
+    backend="${backend#https://}"
+    backend="${backend%%/*}"
     if [ -n "$backend" ]; then
       any=1
       weight_raw=$(eval "printf '%s' \"\${$weight_var:-1}\"")
@@ -69,6 +72,11 @@ set_lb_method_directive() {
 }
 
 rm -f /etc/nginx/conf.d/default.conf
+
+if [ ! -f "$TEMPLATE" ]; then
+  echo "Template not found: $TEMPLATE" >&2
+  exit 1
+fi
 
 ML_UPSTREAM_SERVERS="$(build_upstream_servers)"
 ML_LB_METHOD_DIRECTIVE="$(set_lb_method_directive)"

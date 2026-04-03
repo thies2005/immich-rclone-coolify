@@ -130,7 +130,7 @@ services:
       ML_BACKEND_10: ${ML_BACKEND_10:-}
       ML_BACKEND_10_WEIGHT: ${ML_BACKEND_10_WEIGHT:-1}
     volumes:
-      - ./immich-ml-balancer/nginx.conf.template:/etc/nginx/balancer.conf.template:ro
+      - ./immich-ml-balancer/nginx.conf.template:/opt/immich-ml-balancer/nginx.conf.template:ro
       - ./immich-ml-balancer/render-nginx.sh:/docker-entrypoint.d/30-render-nginx.sh:ro
     networks:
       - immich-net
