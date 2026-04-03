@@ -1,18 +1,12 @@
 #!/bin/sh
-set -eu
+set -e
 
 sanitize_weight() {
   value="${1:-1}"
   case "$value" in
-    ''|*[!0-9]*)
-      echo 1
-      ;;
+    ''|*[!0-9]*) echo 1 ;;
     *)
-      if [ "$value" -lt 1 ]; then
-        echo 1
-      else
-        echo "$value"
-      fi
+      [ "$value" -lt 1 ] && echo 1 || echo "$value"
       ;;
   esac
 }
@@ -47,10 +41,10 @@ build_split_clients() {
   while [ "$i" -le 10 ]; do
     eval "backend=\"\${ML_BACKEND_${i}:-}\""
     if [ -n "$backend" ]; then
-      eval "weight=\$(sanitize_weight \"\${ML_BACKEND_${i}_WEIGHT:-1}\")"
+      weight=$(sanitize_weight "${ML_BACKEND_${i}_WEIGHT:-1}")
       url=$(normalize_backend "$backend")
       if [ "$count" -gt 0 ]; then
-        urls="${urls} ${url}"
+        urls="${urls}|${url}"
         weights="${weights} ${weight}"
       else
         urls="${url}"
@@ -66,17 +60,22 @@ build_split_clients() {
   done
 
   if [ "$count" -eq 0 ]; then
-    echo "No ML_BACKEND_* configured" >&2
+    echo "[ml-balancer] ERROR: No ML_BACKEND_* configured" >&2
     exit 1
   fi
+
+  echo "[ml-balancer] Backends ($count): $urls" >&2
+  echo "[ml-balancer] Weights: $weights (total=$total_weight)" >&2
 
   sc=""
   cumulative=0
   idx=0
-  for w in $weights; do
+  oldifs="$IFS"
+  IFS='|'
+  for url in $urls; do
+    w=$(echo "$weights" | cut -d' ' -f$((idx + 1)))
     cumulative=$((cumulative + w))
-    url=$(echo "$urls" | cut -d' ' -f$((idx + 1)))
-    pct=$(awk "BEGIN {printf \"%.2f\", ($cumulative/$total_weight)*100}")
+    pct=$((cumulative * 100 / total_weight))
     if [ "$idx" -eq $((count - 1)) ]; then
       sc="${sc}    *        ${url};
 "
@@ -86,6 +85,7 @@ build_split_clients() {
     fi
     idx=$((idx + 1))
   done
+  IFS="$oldifs"
 
   ML_SPLIT_CLIENTS="  split_clients \"\${request_id}\" \$ml_backend_url {
 ${sc}  }"
@@ -93,7 +93,8 @@ ${sc}  }"
   [ "$any_https" -eq 1 ] && ML_USE_SSL="on"
 }
 
-echo "[ml-balancer] Removing default nginx configs..."
+echo "[ml-balancer] Starting..." >&2
+echo "[ml-balancer] Removing default nginx configs..." >&2
 rm -f /etc/nginx/conf.d/default.conf
 
 if [ ! -f /opt/immich-ml-balancer/nginx.conf.template ]; then
@@ -101,19 +102,19 @@ if [ ! -f /opt/immich-ml-balancer/nginx.conf.template ]; then
   exit 1
 fi
 
-echo "[ml-balancer] Building split_clients config..."
+echo "[ml-balancer] Building split_clients config..." >&2
 build_split_clients
 export ML_SPLIT_CLIENTS ML_USE_SSL
 
-echo "[ml-balancer] Rendering nginx.conf..."
+echo "[ml-balancer] Rendering nginx.conf..." >&2
 envsubst '${ML_SPLIT_CLIENTS} ${ML_USE_SSL} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
   < /opt/immich-ml-balancer/nginx.conf.template > /etc/nginx/nginx.conf
 
-echo "[ml-balancer] Final nginx.conf:"
-cat /etc/nginx/nginx.conf
+echo "[ml-balancer] Generated nginx.conf:" >&2
+cat /etc/nginx/nginx.conf >&2
 
-echo "[ml-balancer] Testing config..."
-nginx -t
+echo "[ml-balancer] Testing nginx config..." >&2
+nginx -t 2>&1 || { echo "[ml-balancer] nginx -t FAILED" >&2; exit 1; }
 
-echo "[ml-balancer] Starting nginx..."
+echo "[ml-balancer] Starting nginx..." >&2
 exec nginx -g 'daemon off;'
