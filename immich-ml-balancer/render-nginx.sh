@@ -40,8 +40,11 @@ build_split_clients() {
   i=1
   while [ "$i" -le 10 ]; do
     eval "backend=\"\${ML_BACKEND_${i}:-}\""
+    backend=$(echo "$backend" | tr -d '\r')
     if [ -n "$backend" ]; then
-      weight=$(sanitize_weight "${ML_BACKEND_${i}_WEIGHT:-1}")
+      weight_raw=$(eval echo "\"\${ML_BACKEND_${i}_WEIGHT:-1}\"")
+      weight_raw=$(echo "$weight_raw" | tr -d '\r')
+      weight=$(sanitize_weight "$weight_raw")
       url=$(normalize_backend "$backend")
       if [ "$count" -gt 0 ]; then
         urls="${urls}|${url}"
@@ -105,6 +108,11 @@ fi
 echo "[ml-balancer] Building split_clients config..." >&2
 build_split_clients
 export ML_SPLIT_CLIENTS ML_USE_SSL
+
+export ML_PROXY_CONNECT_TIMEOUT=$(echo "${ML_PROXY_CONNECT_TIMEOUT:-3s}" | tr -d '\r')
+export ML_PROXY_SEND_TIMEOUT=$(echo "${ML_PROXY_SEND_TIMEOUT:-300s}" | tr -d '\r')
+export ML_PROXY_READ_TIMEOUT=$(echo "${ML_PROXY_READ_TIMEOUT:-300s}" | tr -d '\r')
+export ML_PROXY_NEXT_UPSTREAM_TRIES=$(echo "${ML_PROXY_NEXT_UPSTREAM_TRIES:-3}" | tr -d '\r')
 
 echo "[ml-balancer] Rendering nginx.conf..." >&2
 envsubst '${ML_SPLIT_CLIENTS} ${ML_USE_SSL} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \

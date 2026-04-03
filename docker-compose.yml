@@ -24,6 +24,7 @@ services:
       DB_PORT: 5432
       REDIS_HOSTNAME: redis
       IMMICH_WORKERS_INCLUDE: api
+      IMMICH_MACHINE_LEARNING_URL: http://immich-ml-balancer:80
     volumes:
       - upload_data:/usr/src/app/upload
       - type: bind
@@ -57,6 +58,7 @@ services:
       DB_PORT: 5432
       REDIS_HOSTNAME: redis
       IMMICH_WORKERS_INCLUDE: microservices
+      IMMICH_MACHINE_LEARNING_URL: http://immich-ml-balancer:80
     volumes:
       - upload_data:/usr/src/app/upload
       - type: bind
@@ -130,7 +132,7 @@ services:
     networks:
       - immich-net
     healthcheck:
-      test: ["CMD-SHELL", "ps -o comm= 1 | grep -q nginx && nginx -t >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "ps | grep '[n]ginx' >/dev/null && nginx -t >/dev/null 2>&1"]
       interval: 30s
       timeout: 5s
       retries: 3
