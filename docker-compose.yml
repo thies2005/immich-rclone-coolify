@@ -101,6 +101,10 @@ services:
       - ml_cache:/cache
     networks:
       - immich-net
+    deploy:
+      resources:
+        limits:
+          cpus: '3'
 
   immich-ml-balancer:
     build:
