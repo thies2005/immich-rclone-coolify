@@ -98,7 +98,8 @@ services:
           memory: 2G
 
   immich-ml-balancer:
-    image: docker.io/library/nginx:1.27-alpine
+    build:
+      context: ./immich-ml-balancer
     restart: unless-stopped
     environment:
       ML_PROXY_CONNECT_TIMEOUT: ${ML_PROXY_CONNECT_TIMEOUT:-3s}
@@ -125,14 +126,10 @@ services:
       ML_BACKEND_9_WEIGHT: ${ML_BACKEND_9_WEIGHT:-1}
       ML_BACKEND_10: ${ML_BACKEND_10:-}
       ML_BACKEND_10_WEIGHT: ${ML_BACKEND_10_WEIGHT:-1}
-    volumes:
-      - ./immich-ml-balancer/nginx.conf.template:/opt/immich-ml-balancer/nginx.conf.template:ro
-      - ./immich-ml-balancer/render-nginx.sh:/opt/immich-ml-balancer/render-nginx.sh:ro
-    command: ["sh", "/opt/immich-ml-balancer/render-nginx.sh"]
     networks:
       - immich-net
     healthcheck:
-      test: ["CMD-SHELL", "ps | grep '[n]ginx' >/dev/null && nginx -t >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "nginx -t >/dev/null 2>&1"]
       interval: 30s
       timeout: 5s
       retries: 3
