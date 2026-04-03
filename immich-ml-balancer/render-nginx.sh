@@ -1,5 +1,6 @@
 #!/bin/sh
-set -e
+trap '[ $? -ne 0 ] && echo "[ml-balancer] EXIT CODE: $?"' EXIT
+sleep 1
 
 sanitize_weight() {
   value="${1:-1}"
@@ -63,12 +64,12 @@ build_split_clients() {
   done
 
   if [ "$count" -eq 0 ]; then
-    echo "[ml-balancer] ERROR: No ML_BACKEND_* configured" >&2
+    echo "[ml-balancer] ERROR: No ML_BACKEND_* configured"
     exit 1
   fi
 
-  echo "[ml-balancer] Backends ($count): $urls" >&2
-  echo "[ml-balancer] Weights: $weights (total=$total_weight)" >&2
+  echo "[ml-balancer] Backends ($count): $urls"
+  echo "[ml-balancer] Weights: $weights (total=$total_weight)"
 
   sc=""
   cumulative=0
@@ -96,16 +97,16 @@ ${sc}  }"
   [ "$any_https" -eq 1 ] && ML_USE_SSL="on"
 }
 
-echo "[ml-balancer] Starting..." >&2
-echo "[ml-balancer] Removing default nginx configs..." >&2
+echo "[ml-balancer] Starting..."
+echo "[ml-balancer] Removing default nginx configs..."
 rm -f /etc/nginx/conf.d/default.conf
 
 if [ ! -f /opt/immich-ml-balancer/nginx.conf.template ]; then
-  echo "[ml-balancer] ERROR: Template not found at /opt/immich-ml-balancer/nginx.conf.template" >&2
+  echo "[ml-balancer] ERROR: Template not found at /opt/immich-ml-balancer/nginx.conf.template"
   exit 1
 fi
 
-echo "[ml-balancer] Building split_clients config..." >&2
+echo "[ml-balancer] Building split_clients config..."
 build_split_clients
 export ML_SPLIT_CLIENTS ML_USE_SSL
 
@@ -114,15 +115,15 @@ export ML_PROXY_SEND_TIMEOUT=$(echo "${ML_PROXY_SEND_TIMEOUT:-300s}" | tr -d '\r
 export ML_PROXY_READ_TIMEOUT=$(echo "${ML_PROXY_READ_TIMEOUT:-300s}" | tr -d '\r')
 export ML_PROXY_NEXT_UPSTREAM_TRIES=$(echo "${ML_PROXY_NEXT_UPSTREAM_TRIES:-3}" | tr -d '\r')
 
-echo "[ml-balancer] Rendering nginx.conf..." >&2
+echo "[ml-balancer] Rendering nginx.conf..."
 envsubst '${ML_SPLIT_CLIENTS} ${ML_USE_SSL} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
   < /opt/immich-ml-balancer/nginx.conf.template > /etc/nginx/nginx.conf
 
-echo "[ml-balancer] Generated nginx.conf:" >&2
-cat /etc/nginx/nginx.conf >&2
+echo "[ml-balancer] Generated nginx.conf:"
+cat /etc/nginx/nginx.conf
 
-echo "[ml-balancer] Testing nginx config..." >&2
-nginx -t 2>&1 || { echo "[ml-balancer] nginx -t FAILED" >&2; exit 1; }
+echo "[ml-balancer] Testing nginx config..."
+nginx -t 2>&1 || { echo "[ml-balancer] nginx -t FAILED"; exit 1; }
 
-echo "[ml-balancer] Starting nginx..." >&2
+echo "[ml-balancer] Starting nginx..."
 exec nginx -g 'daemon off;'
