@@ -93,17 +93,27 @@ ${sc}  }"
   [ "$any_https" -eq 1 ] && ML_USE_SSL="on"
 }
 
+echo "[ml-balancer] Removing default nginx configs..."
 rm -f /etc/nginx/conf.d/default.conf
 
 if [ ! -f /opt/immich-ml-balancer/nginx.conf.template ]; then
-  echo "Template not found: /opt/immich-ml-balancer/nginx.conf.template" >&2
+  echo "[ml-balancer] ERROR: Template not found at /opt/immich-ml-balancer/nginx.conf.template" >&2
   exit 1
 fi
 
+echo "[ml-balancer] Building split_clients config..."
 build_split_clients
 export ML_SPLIT_CLIENTS ML_USE_SSL
 
+echo "[ml-balancer] Rendering nginx.conf..."
 envsubst '${ML_SPLIT_CLIENTS} ${ML_USE_SSL} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
   < /opt/immich-ml-balancer/nginx.conf.template > /etc/nginx/nginx.conf
 
+echo "[ml-balancer] Final nginx.conf:"
+cat /etc/nginx/nginx.conf
+
+echo "[ml-balancer] Testing config..."
 nginx -t
+
+echo "[ml-balancer] Starting nginx..."
+exec nginx -g 'daemon off;'
