@@ -71,6 +71,20 @@ Notes:
 | `DB_USERNAME` | Default `immich`. |
 | `DB_DATABASE_NAME` | Default `immich`. |
 
+### Optional ML stability tuning (recommended on small ARM hosts)
+
+If ML workers repeatedly restart while loading models, set:
+
+| Variable | Suggested value |
+|---|---|
+| `MACHINE_LEARNING_WORKERS` | `1` |
+| `MACHINE_LEARNING_REQUEST_THREADS` | `1` |
+| `MACHINE_LEARNING_MODEL_INTER_OP_THREADS` | `1` |
+| `MACHINE_LEARNING_MODEL_INTRA_OP_THREADS` | `1` |
+| `MACHINE_LEARNING_WORKER_TIMEOUT` | `300` |
+
+These reduce memory pressure and avoid worker kill/restart loops during heavy model initialization.
+
 ### Configure reverse proxy
 
 1. Under **immich-server**, set the **Domains** field to your URL (e.g. `https://photos.example.com`).

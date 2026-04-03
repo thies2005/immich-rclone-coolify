@@ -41,6 +41,11 @@ Use a single internal URL in Immich: `http://immich-ml-balancer:80`.
 | `ML_BACKEND_1_WEIGHT` | No | `1` | Used when `ML_LB_METHOD=weighted`. |
 | `ML_BACKEND_2` ... `ML_BACKEND_10` | No | empty | Additional backend targets `host:port`. |
 | `ML_BACKEND_2_WEIGHT` ... `ML_BACKEND_10_WEIGHT` | No | `1` | Additional backend weights. |
+| `MACHINE_LEARNING_WORKERS` | No | `1` | Number of ML worker processes. Keep `1` unless host has ample RAM. |
+| `MACHINE_LEARNING_REQUEST_THREADS` | No | `1` | ML request thread pool size. Lower values reduce memory pressure. |
+| `MACHINE_LEARNING_MODEL_INTER_OP_THREADS` | No | `1` | Parallel model ops thread count. |
+| `MACHINE_LEARNING_MODEL_INTRA_OP_THREADS` | No | `1` | Threads per model operation. |
+| `MACHINE_LEARNING_WORKER_TIMEOUT` | No | `300` | Worker kill timeout (seconds) before restart. |
 
 *At least one backend should be configured.
 
