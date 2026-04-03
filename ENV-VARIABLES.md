@@ -23,6 +23,29 @@ Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 
 ---
 
+## Machine Learning Balancer (Coolify and standalone)
+
+Use a single internal URL in Immich: `http://immich-ml-balancer:80`.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ML_LB_METHOD` | No | `round_robin` | Balancing mode: `round_robin`, `weighted`, `least_conn`, `ip_hash`. |
+| `ML_LB_KEEPALIVE` | No | `32` | Upstream keepalive connections. |
+| `ML_BACKEND_MAX_FAILS` | No | `2` | Passive-fail threshold before backend is marked failed. |
+| `ML_BACKEND_FAIL_TIMEOUT` | No | `10s` | Time window for fail counting and temporary backend disablement. |
+| `ML_PROXY_CONNECT_TIMEOUT` | No | `3s` | Connect timeout to backend. |
+| `ML_PROXY_SEND_TIMEOUT` | No | `300s` | Send timeout to backend. |
+| `ML_PROXY_READ_TIMEOUT` | No | `300s` | Read timeout from backend. |
+| `ML_PROXY_NEXT_UPSTREAM_TRIES` | No | `3` | Retry attempts across backends on failure. |
+| `ML_BACKEND_1` | No* | `immich-machine-learning:3003` | Backend target `host:port`. |
+| `ML_BACKEND_1_WEIGHT` | No | `1` | Used when `ML_LB_METHOD=weighted`. |
+| `ML_BACKEND_2` ... `ML_BACKEND_10` | No | empty | Additional backend targets `host:port`. |
+| `ML_BACKEND_2_WEIGHT` ... `ML_BACKEND_10_WEIGHT` | No | `1` | Additional backend weights. |
+
+*At least one backend should be configured.
+
+---
+
 ## Reverse Proxy (standalone deployment only)
 
 These variables are used when deploying with `docker-compose.standalone.yml`. Coolify handles its own reverse proxy via Traefik.

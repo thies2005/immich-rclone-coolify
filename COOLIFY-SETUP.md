@@ -33,7 +33,7 @@ If you see your Internxt files, proceed to Coolify setup.
 
 ---
 
-## Step 2: Set Environment Variable
+## Step 2: Set Environment Variables
 
 In the Coolify resource settings, add:
 
@@ -42,6 +42,25 @@ In the Coolify resource settings, add:
 | `DB_PASSWORD` | *(a strong random password)* |
 
 That's the only required variable. Everything else has working defaults.
+
+### Machine learning backends (recommended)
+
+Set backend targets only as env vars. Do not hardcode remote hostnames in compose.
+
+| Variable | Example |
+|---|---|
+| `ML_LB_METHOD` | `round_robin` |
+| `ML_BACKEND_1` | `immich-machine-learning:3003` |
+| `ML_BACKEND_2` | `192.168.1.50:3003` |
+| `ML_BACKEND_3` | `ml-remote.example.internal:3003` |
+| `ML_BACKEND_1_WEIGHT` | `2` |
+| `ML_BACKEND_2_WEIGHT` | `1` |
+| `ML_BACKEND_3_WEIGHT` | `1` |
+
+Notes:
+- `ML_BACKEND_1` defaults to `immich-machine-learning:3003`.
+- Keep additional backends empty unless used.
+- For weighted mode, set `ML_LB_METHOD=weighted`.
 
 ### Optional
 
@@ -82,6 +101,38 @@ Open your domain and create the admin account.
 4. Save → Click **Scan**
 
 > **First scan is slow** — every file downloads from Internxt and decrypts through E2E. 10k photos may take 2–4 hours. Subsequent scans are fast.
+
+### Set Machine Learning URL
+
+In Immich **Administration -> Settings -> Machine Learning**, set:
+
+`http://immich-ml-balancer:80`
+
+Use one URL only. Do not configure Immich with multiple ML URLs when using the balancer.
+
+---
+
+## How it Works in Coolify
+
+- `immich-ml-balancer` runs in the same Compose stack and same internal Docker network.
+- The balancer is not published publicly (no host ports).
+- It load-balances local and remote ML backends from `ML_BACKEND_*` env vars.
+- If one backend fails, nginx retries other healthy backends.
+
+---
+
+## Validate After Deploy
+
+From a container terminal in Coolify (for example `immich-server`):
+
+```bash
+curl -fsS http://immich-ml-balancer/healthz
+curl -fsS http://immich-ml-balancer/ping
+```
+
+Expected:
+- `/healthz` returns `ok`
+- `/ping` returns machine-learning ping response
 
 ---
 

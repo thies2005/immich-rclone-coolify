@@ -48,9 +48,12 @@ rclone runs on the **host** as a systemd service. Docker containers access the f
 │  │  │ immich-server│  │ immich-microservices│   │    │
 │  │  │ (API + UI)  │  │ (jobs + migrations) │   │    │
 │  │  └──────────────┘  └─────────────────────┘   │    │
-│  │  ┌──────────────┐  ┌─────┐  ┌───────────┐   │    │
-│  │  │ machine-learn│  │ pg  │  │  redis    │   │    │
-│  │  └──────────────┘  └─────┘  └───────────┘   │    │
+│  │  ┌──────────────┐  ┌──────────────┐         │    │
+│  │  │ machine-learn│  │ ml-balancer  │         │    │
+│  │  └──────────────┘  └──────────────┘         │    │
+│  │  ┌─────┐  ┌───────────┐                     │    │
+│  │  │ pg  │  │  redis    │                     │    │
+│  │  └─────┘  └───────────┘                     │    │
 │  └────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────┘
          │
@@ -153,11 +156,19 @@ Includes built-in options for Caddy (auto-HTTPS), Cloudflare Tunnel, or Tailscal
 
 See **[`COOLIFY-SETUP.md`](COOLIFY-SETUP.md)** for step-by-step instructions.
 
-Add the repo as a Docker Compose stack from GitHub, set `DB_PASSWORD` in Coolify, and deploy.
+Add the repo as a Docker Compose stack from GitHub, set `DB_PASSWORD` in Coolify, configure ML backend env vars, and deploy.
 
 ## Step 4: Create Your Admin Account
 
 Open your Immich URL in a browser and create the admin account.
+
+## Step 4.5: Set Machine Learning URL (Recommended)
+
+In Immich, go to **Administration -> Settings -> Machine Learning** and set the URL to:
+
+`http://immich-ml-balancer:80`
+
+This keeps backend hostnames private and lets the balancer handle local + remote ML failover.
 
 ## Step 5: Add the External Library
 
@@ -332,6 +343,8 @@ This is expected. Internxt uses end-to-end encryption -- every file must be full
 |---|---|
 | `install.sh` | **Run this first** -- builds rclone, creates config, sets up systemd |
 | `docker-compose.yml` | Coolify deployment (Immich + Postgres + Redis) |
+| `immich-ml-balancer/nginx.conf.template` | Internal nginx template used by the ML balancer |
+| `immich-ml-balancer/render-nginx.sh` | Startup renderer that builds nginx config from env vars |
 | `docker-compose.standalone.yml` | Pure Docker deployment with Caddy/Cloudflare/Tailscale options |
 | `Caddyfile` | Caddy reverse proxy config (for standalone deployment) |
 | `.env.example` | Environment variable template (for standalone deployment) |
