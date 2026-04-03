@@ -52,7 +52,7 @@ Set backend targets only as env vars. Do not hardcode remote hostnames in compos
 | `ML_LB_METHOD` | `round_robin` |
 | `ML_BACKEND_1` | `immich-machine-learning:3003` |
 | `ML_BACKEND_2` | `192.168.1.50:3003` |
-| `ML_BACKEND_3` | `ml-remote.example.internal:3003` |
+| `ML_BACKEND_3` | `https://immich-ml.example.com` |
 | `ML_BACKEND_1_WEIGHT` | `2` |
 | `ML_BACKEND_2_WEIGHT` | `1` |
 | `ML_BACKEND_3_WEIGHT` | `1` |
@@ -61,7 +61,7 @@ Notes:
 - `ML_BACKEND_1` defaults to `immich-machine-learning:3003`.
 - Keep additional backends empty unless used.
 - For weighted mode, set `ML_LB_METHOD=weighted`.
-- Backends must be `host:port` only. Do not include `http://`, `https://`, or trailing `/`.
+- Backends accept `host:port` or full URLs (`http://`, `https://`). Trailing paths are stripped.
 
 ### Optional
 

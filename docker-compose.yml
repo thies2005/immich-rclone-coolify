@@ -101,10 +101,6 @@ services:
     image: docker.io/library/nginx:1.27-alpine
     restart: unless-stopped
     environment:
-      ML_LB_METHOD: ${ML_LB_METHOD:-round_robin}
-      ML_LB_KEEPALIVE: ${ML_LB_KEEPALIVE:-32}
-      ML_BACKEND_MAX_FAILS: ${ML_BACKEND_MAX_FAILS:-2}
-      ML_BACKEND_FAIL_TIMEOUT: ${ML_BACKEND_FAIL_TIMEOUT:-10s}
       ML_PROXY_CONNECT_TIMEOUT: ${ML_PROXY_CONNECT_TIMEOUT:-3s}
       ML_PROXY_SEND_TIMEOUT: ${ML_PROXY_SEND_TIMEOUT:-300s}
       ML_PROXY_READ_TIMEOUT: ${ML_PROXY_READ_TIMEOUT:-300s}

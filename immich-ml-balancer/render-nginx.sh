@@ -1,9 +1,6 @@
 #!/bin/sh
 set -eu
 
-TEMPLATE="/opt/immich-ml-balancer/nginx.conf.template"
-OUTPUT="/etc/nginx/nginx.conf"
-
 sanitize_weight() {
   value="${1:-1}"
   case "$value" in
@@ -20,69 +17,93 @@ sanitize_weight() {
   esac
 }
 
-build_upstream_servers() {
+normalize_backend() {
+  raw="$1"
+  scheme="http"
+  case "$raw" in
+    https://*) scheme="https"; raw="${raw#https://}" ;;
+    http://*)  raw="${raw#http://}" ;;
+  esac
+  host_port="${raw%%/*}"
+  host="${host_port%%:*}"
+  port="${host_port#*:}"
+  if [ "$host" = "$port" ]; then
+    case "$scheme" in
+      https) port="443" ;;
+      *)     port="3003" ;;
+    esac
+  fi
+  echo "${scheme}://${host}:${port}"
+}
+
+build_split_clients() {
+  urls=""
+  weights=""
+  total_weight=0
+  any_https=0
+  count=0
+
   i=1
-  any=0
-
   while [ "$i" -le 10 ]; do
-    backend_var="ML_BACKEND_${i}"
-    weight_var="ML_BACKEND_${i}_WEIGHT"
-
-    backend=$(eval "printf '%s' \"\${$backend_var:-}\"")
-    backend="${backend#http://}"
-    backend="${backend#https://}"
-    backend="${backend%%/*}"
+    eval "backend=\"\${ML_BACKEND_${i}:-}\""
     if [ -n "$backend" ]; then
-      any=1
-      weight_raw=$(eval "printf '%s' \"\${$weight_var:-1}\"")
-      weight=$(sanitize_weight "$weight_raw")
-
-      if [ "${ML_LB_METHOD:-round_robin}" = "weighted" ]; then
-        printf '    server %s max_fails=%s fail_timeout=%s weight=%s;\n' \
-          "$backend" "${ML_BACKEND_MAX_FAILS:-2}" "${ML_BACKEND_FAIL_TIMEOUT:-10s}" "$weight"
+      eval "weight=\$(sanitize_weight \"\${ML_BACKEND_${i}_WEIGHT:-1}\")"
+      url=$(normalize_backend "$backend")
+      if [ "$count" -gt 0 ]; then
+        urls="${urls} ${url}"
+        weights="${weights} ${weight}"
       else
-        printf '    server %s max_fails=%s fail_timeout=%s;\n' \
-          "$backend" "${ML_BACKEND_MAX_FAILS:-2}" "${ML_BACKEND_FAIL_TIMEOUT:-10s}"
+        urls="${url}"
+        weights="${weight}"
       fi
+      total_weight=$((total_weight + weight))
+      count=$((count + 1))
+      case "$url" in
+        https://*) any_https=1 ;;
+      esac
     fi
-
     i=$((i + 1))
   done
 
-  if [ "$any" -ne 1 ]; then
-    printf '    server 127.0.0.1:9 down;\n'
+  if [ "$count" -eq 0 ]; then
+    echo "No ML_BACKEND_* configured" >&2
+    exit 1
   fi
-}
 
-set_lb_method_directive() {
-  case "${ML_LB_METHOD:-round_robin}" in
-    least_conn)
-      printf '    least_conn;\n'
-      ;;
-    ip_hash)
-      printf '    ip_hash;\n'
-      ;;
-    weighted|round_robin)
-      printf ''
-      ;;
-    *)
-      printf ''
-      ;;
-  esac
+  sc=""
+  cumulative=0
+  idx=0
+  for w in $weights; do
+    cumulative=$((cumulative + w))
+    url=$(echo "$urls" | cut -d' ' -f$((idx + 1)))
+    pct=$(awk "BEGIN {printf \"%.2f\", ($cumulative/$total_weight)*100}")
+    if [ "$idx" -eq $((count - 1)) ]; then
+      sc="${sc}    *        ${url};
+"
+    else
+      sc="${sc}    ${pct}%   ${url};
+"
+    fi
+    idx=$((idx + 1))
+  done
+
+  ML_SPLIT_CLIENTS="  split_clients \"\${request_id}\" \$ml_backend_url {
+${sc}  }"
+  ML_USE_SSL="off"
+  [ "$any_https" -eq 1 ] && ML_USE_SSL="on"
 }
 
 rm -f /etc/nginx/conf.d/default.conf
 
-if [ ! -f "$TEMPLATE" ]; then
-  echo "Template not found: $TEMPLATE" >&2
+if [ ! -f /opt/immich-ml-balancer/nginx.conf.template ]; then
+  echo "Template not found: /opt/immich-ml-balancer/nginx.conf.template" >&2
   exit 1
 fi
 
-ML_UPSTREAM_SERVERS="$(build_upstream_servers)"
-ML_LB_METHOD_DIRECTIVE="$(set_lb_method_directive)"
-export ML_UPSTREAM_SERVERS ML_LB_METHOD_DIRECTIVE
+build_split_clients
+export ML_SPLIT_CLIENTS ML_USE_SSL
 
-envsubst '${ML_LB_KEEPALIVE} ${ML_UPSTREAM_SERVERS} ${ML_LB_METHOD_DIRECTIVE} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
-  < "$TEMPLATE" > "$OUTPUT"
+envsubst '${ML_SPLIT_CLIENTS} ${ML_USE_SSL} ${ML_PROXY_CONNECT_TIMEOUT} ${ML_PROXY_SEND_TIMEOUT} ${ML_PROXY_READ_TIMEOUT} ${ML_PROXY_NEXT_UPSTREAM_TRIES}' \
+  < /opt/immich-ml-balancer/nginx.conf.template > /etc/nginx/nginx.conf
 
 nginx -t
