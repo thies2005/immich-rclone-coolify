@@ -164,7 +164,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 4G
 
   redis:
     image: docker.io/valkey/valkey:9@sha256:3eeb09785cd61ec8e3be35f8804c8892080f3ca21934d628abc24ee4ed1698f6
