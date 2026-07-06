@@ -104,7 +104,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '3'
+          cpus: '${IMMICH_ML_CPUS:-2}'
 
   immich-ml-balancer:
     build:
