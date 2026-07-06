@@ -67,7 +67,7 @@ Notes:
 
 | Variable | Why change it |
 |---|---|
-| `IMMICH_VERSION` | Default `v2`. Pin to a specific release (e.g. `v2.1.0`). |
+| `IMMICH_VERSION` | Default `v3`. Set to track latest v3.x, or pin a specific release (e.g. `v3.5.0`). Change this to upgrade Immich. |
 | `DB_USERNAME` | Default `immich`. |
 | `DB_DATABASE_NAME` | Default `immich`. |
 

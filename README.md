@@ -7,7 +7,7 @@
 [![GitHub](https://img.shields.io/badge/repo-thies2005%2Fimmich--rclone--coolify-181717?logo=github)](https://github.com/thies2005/immich-rclone-coolify)
 [![Docker](https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker)](DOCKER-SETUP.md)
 [![Coolify](https://img.shields.io/badge/deploy-Coolify-blue)](COOLIFY-SETUP.md)
-[![Immich](https://img.shields.io/badge/Immich-v2-4250af?logo=immich)](https://immich.app)
+[![Immich](https://img.shields.io/badge/Immich-v3-4250af?logo=immich)](https://immich.app)
 [![Internxt](https://img.shields.io/badge/Internxt-E2E%20encrypted-0066ff)](https://internxt.com)
 [![rclone](https://img.shields.io/badge/rclone-custom%20fork-orange?logo=rclone)](https://github.com/thies2005/rclone)
 

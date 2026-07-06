@@ -18,7 +18,7 @@ Only **`DB_PASSWORD`** is required. Everything else has working defaults.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `IMMICH_VERSION` | No | `v2` | Immich image tag. Pin to a version (e.g. `v2.1.0`) for reproducibility. |
+| `IMMICH_VERSION` | No | `v3` | Immich image tag. Set to `v3` to track the latest v3.x release, or pin to a specific version (e.g. `v3.5.0`) for reproducibility. Change this to upgrade Immich. |
 | `IMMICH_PORT` | No | `2283` | Host port for direct HTTP access (standalone deployment only). |
 
 ---

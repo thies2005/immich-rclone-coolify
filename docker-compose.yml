@@ -7,7 +7,7 @@ name: immich
 
 services:
   immich-server:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -43,7 +43,7 @@ services:
       start_period: 120s
 
   immich-microservices:
-    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v2}
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-v3}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -77,7 +77,7 @@ services:
       start_period: 30s
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v2}
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-v3}
     restart: unless-stopped
     environment:
       DB_HOSTNAME: postgres
