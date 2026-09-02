@@ -276,14 +276,6 @@ sudo systemctl restart immich-rclone
 
 See [`ENV-VARIABLES.md`](ENV-VARIABLES.md) for all available settings.
 
-### Update rclone to latest fork version
-
-Re-running the install script rebuilds rclone from the latest source and restarts the service. Existing credentials are preserved:
-
-```bash
-sudo bash install.sh
-```
-
 ### Full uninstall
 
 ```bash
@@ -293,6 +285,64 @@ sudo rm /etc/systemd/system/immich-rclone.service
 sudo rm -rf /opt/immich-rclone /etc/immich-rclone /var/cache/immich-rclone /var/log/immich-rclone
 sudo systemctl daemon-reload
 ```
+
+## Updating
+
+Three things update independently: **Immich** (Docker images, via Coolify/compose), **rclone** (host binary, via `update-rclone.sh`), and **this repo** (git pull — done automatically by `update-rclone.sh`).
+
+### Update Immich — minor versions
+
+Just redeploy. The `IMMICH_VERSION` env var defaults to the floating `v3` tag, so every redeploy pulls the latest v3.x image. Database migrations run automatically on startup.
+
+- **Coolify:** open the Immich resource → **Redeploy**. That's it.
+- **Standalone Docker:** `docker compose -f docker-compose.standalone.yml pull && docker compose -f docker-compose.standalone.yml up -d`
+
+Nothing on the host changes — this never touches rclone.
+
+### Update Immich — major versions (e.g. v3 → v4)
+
+1. Skim the [release notes](https://github.com/immich-app/immich/releases) for breaking changes and required database image changes.
+2. Take a database backup first:
+
+   ```bash
+   # Coolify: find your postgres container name with: docker ps
+   sudo docker exec <postgres-container> pg_dump -U immich immich > ~/immich-backup-$(date +%F).sql
+   # Standalone:
+   sudo docker exec immich-postgres pg_dump -U immich immich > ~/immich-backup-$(date +%F).sql
+   ```
+
+3. Set `IMMICH_VERSION=v4` (the new major tag) in the Coolify resource's environment variables — or in `.env` for standalone — and redeploy.
+
+### Update rclone — one command on the host
+
+```bash
+cd /path/to/immich-rclone-coolify     # e.g. /root/immich-rclone-coolify
+sudo bash update-rclone.sh
+```
+
+This rebuilds rclone from the fork's `master` and restarts the FUSE mount. Internxt credentials in `/etc/immich-rclone` are preserved. The script also:
+
+1. updates the repo clone it lives in (`git checkout master && git pull`), then re-runs itself;
+2. stops the Docker containers that bind-mount `/mnt/immich-external-library` — required, because restarting the FUSE mount under running containers leaves them on a dead bind and the external library breaks until they restart. It's a plain `docker stop`/`start` — no redeploy, no config change, transparent to Coolify;
+3. verifies service + mount are healthy and restarts the containers.
+
+Use `--skip-containers` if you want zero Docker interaction — then redeploy in Coolify afterwards so the containers pick up the fresh mount.
+
+To build a specific fork tag instead of `master`: `sudo bash update-rclone.sh v1.76.0`.
+
+This never updates Immich — that stays in Coolify (see above).
+
+### After any update, verify
+
+1. Log into Immich, browse a few photos.
+2. Administration → External Libraries → scan — new files appearing means the mount works end-to-end.
+3. Sweep for leftover containers from old deployments (they silently survive redeploys and eat RAM):
+
+   ```bash
+   sudo docker ps --format '{{.Names}}' | sort
+   ```
+
+   Anything you don't recognize: investigate before deleting (`docker inspect <name>` — the `coolify.*` labels show which Coolify resource owns it).
 
 ## Troubleshooting
 

@@ -19,7 +19,17 @@ LOG_DIR="/var/log/immich-rclone"
 MOUNT_POINT="/mnt/immich-external-library"
 SERVICE_NAME="immich-rclone"
 RCLONE_REPO="https://github.com/thies2005/rclone.git"
-RCLONE_BRANCH="master"
+# Override with env to build a specific fork tag/branch, e.g.:
+#   sudo RCLONE_BRANCH=v1.76.0 bash install.sh
+RCLONE_BRANCH="${RCLONE_BRANCH:-master}"
+
+ASSUME_YES=0
+for arg in "$@"; do
+    case "${arg}" in
+        --yes|-y) ASSUME_YES=1 ;;
+        *) fail "Unknown option: ${arg} (supported: --yes)" ;;
+    esac
+done
 
 is_debian_like() { command -v apt-get &>/dev/null; }
 
@@ -63,7 +73,9 @@ fi
 echo ""
 echo "  Your Coolify Docker containers will access files via bind mount."
 echo ""
-read -rp "Press Enter to continue or Ctrl+C to cancel..."
+if [ "${ASSUME_YES}" = "0" ]; then
+    read -rp "Press Enter to continue or Ctrl+C to cancel..."
+fi
 
 # ── Install dependencies ──────────────────────────────────────
 
