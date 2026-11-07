@@ -1,19 +1,20 @@
-<div align="center">
+<h1 align="center">Immich + Internxt</h1>
 
-# Immich + Internxt
+<p align="center"><strong>Your photos. Your infrastructure.</strong><br>Self-hosted photo management backed by an rclone host mount.</p>
 
-**Self-hosted photo management backed by Internxt's encrypted cloud storage.**
+<p align="center">
+  <a href="DOCKER-SETUP.md">Docker setup</a> ·
+  <a href="COOLIFY-SETUP.md">Coolify setup</a> ·
+  <a href="#prerequisites">Get started</a>
+</p>
 
-[![GitHub](https://img.shields.io/badge/repo-thies2005%2Fimmich--rclone--coolify-181717?logo=github)](https://github.com/thies2005/immich-rclone-coolify)
-[![Docker](https://img.shields.io/badge/deploy-Docker-2496ED?logo=docker)](DOCKER-SETUP.md)
-[![Coolify](https://img.shields.io/badge/deploy-Coolify-blue)](COOLIFY-SETUP.md)
-[![Immich](https://img.shields.io/badge/Immich-v3-4250af?logo=immich)](https://immich.app)
-[![Internxt](https://img.shields.io/badge/Internxt-E2E%20encrypted-0066ff)](https://internxt.com)
-[![rclone](https://img.shields.io/badge/rclone-custom%20fork-orange?logo=rclone)](https://github.com/thies2005/rclone)
+## What you can do
 
-</div>
-
----
+| | Features |
+|---|---|
+| **Browse your library** | Expose an Internxt-backed external library to Immich. |
+| **Choose your deployment** | Run Docker Compose directly or manage the stack with Coolify. |
+| **Mount on the host** | Use a systemd-managed rclone FUSE mount with a read-only container bind mount. |
 
 ## What This Does
 
@@ -70,8 +71,6 @@ rclone runs on the **host** as a systemd service. Docker containers access the f
 | **Coolify** | [`COOLIFY-SETUP.md`](COOLIFY-SETUP.md) | Servers already running Coolify. Deploys as a managed stack with Traefik. |
 
 Both options share the same rclone host setup (Step 1 below) and the same Immich configuration. The only difference is how Docker is managed.
-
----
 
 ## Prerequisites
 
@@ -190,8 +189,6 @@ The first scan downloads every file from Internxt and decrypts it through E2E en
 | 50,000 photos | ~8-16 hours |
 
 You can watch progress in Immich under **Administration -> Jobs**. Subsequent scans are fast -- only new or changed files are re-downloaded.
-
----
 
 ## What Gets Installed on the Host
 
