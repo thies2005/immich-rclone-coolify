@@ -31,6 +31,7 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC}  $*" >&2; exit 1; }
 
 SERVICE_NAME="immich-rclone"
+COOLIFY_MOUNT_SERVICE="coolify-backups-mount.service"
 INSTALL_DIR="/opt/immich-rclone"
 MOUNT_POINT="/mnt/immich-external-library"
 LOG_FILE="/var/log/immich-rclone/rclone.log"
@@ -59,11 +60,25 @@ if [ "${UPDATE_RCLONE_SELF_UPDATED:-0}" != "1" ]; then
 fi
 
 # ── 2. Current version ──────────────────────────────────────────────────────
-if [ -x "${INSTALL_DIR}/rclone" ]; then
-    OLD_VERSION="$("${INSTALL_DIR}/rclone" version | head -n1)"
-else
-    OLD_VERSION="(not installed)"
-fi
+describe_rclone_version() {
+    if [ ! -x "${INSTALL_DIR}/rclone" ]; then
+        echo "(not installed)"
+        return 0
+    fi
+    local ver rev
+    ver="$("${INSTALL_DIR}/rclone" version 2>/dev/null | head -n1 || true)"
+    [ -n "${ver}" ] || ver="(unknown)"
+    if [[ "${ver}" == *-DEV ]]; then
+        rev="$("${INSTALL_DIR}/rclone" version --deps 2>/dev/null | awk '/^- vcs\.revision:/ {print substr($3, 1, 7); exit}' || true)"
+        if [ -n "${rev}" ]; then
+            echo "${ver} (${rev})"
+            return 0
+        fi
+    fi
+    echo "${ver}"
+}
+
+OLD_VERSION="$(describe_rclone_version)"
 info "Current rclone: ${OLD_VERSION}"
 
 # ── 3. Find and stop containers that bind-mount the external library ───────
@@ -79,30 +94,74 @@ if [ "${SKIP_CONTAINERS}" = "0" ] && command -v docker &>/dev/null && docker inf
     done
 fi
 
-if [ "${SKIP_CONTAINERS}" = "1" ]; then
-    warn "--skip-containers: leaving containers running — redeploy in Coolify afterwards, or the external library will be broken"
-elif [ ${#CONTAINERS[@]} -gt 0 ]; then
-    info "Stopping ${#CONTAINERS[@]} container(s) using the mount: ${CONTAINERS[*]}"
-    docker stop "${CONTAINERS[@]}" >/dev/null
-else
-    info "No running containers bind-mount ${MOUNT_POINT} — nothing to stop"
-fi
+CONTAINERS_STOPPED=0
+COOLIFY_MOUNT_STOPPED=0
+
+restart_coolify_mount() {
+    if [ "${COOLIFY_MOUNT_STOPPED}" = "1" ]; then
+        COOLIFY_MOUNT_STOPPED=0
+        info "Restarting ${COOLIFY_MOUNT_SERVICE}..."
+        if systemctl start "${COOLIFY_MOUNT_SERVICE}"; then
+            ok "${COOLIFY_MOUNT_SERVICE} restarted"
+        else
+            warn "Failed to restart ${COOLIFY_MOUNT_SERVICE} — check: systemctl status ${COOLIFY_MOUNT_SERVICE}"
+        fi
+    fi
+}
 
 restart_containers() {
-    if [ ${#CONTAINERS[@]} -gt 0 ]; then
+    if [ "${CONTAINERS_STOPPED}" = "1" ] && [ ${#CONTAINERS[@]} -gt 0 ]; then
+        CONTAINERS_STOPPED=0
         info "Starting containers again..."
-        docker start "${CONTAINERS[@]}" >/dev/null
+        if ! docker start "${CONTAINERS[@]}" >/dev/null; then
+            warn "Failed to start one or more containers: ${CONTAINERS[*]}"
+            return 1
+        fi
         info "Waiting for containers to become healthy (max 120s)..."
         for c in "${CONTAINERS[@]}"; do
+            STATUS="unknown"
             for _ in $(seq 1 60); do
                 STATUS="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${c}" 2>/dev/null || echo "unknown")"
-                [ "${STATUS}" = "healthy" ] || [ "${STATUS}" = "running" ] && break
+                if [ "${STATUS}" = "healthy" ] || [ "${STATUS}" = "running" ]; then
+                    break
+                fi
                 sleep 2
             done
             ok "${c}: ${STATUS}"
         done
     fi
 }
+
+cleanup_on_exit() {
+    local rc=$?
+    set +e
+    restart_coolify_mount
+    restart_containers
+    exit "${rc}"
+}
+
+trap cleanup_on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+if [ "${SKIP_CONTAINERS}" = "1" ]; then
+    warn "--skip-containers: leaving containers running — redeploy in Coolify afterwards, or the external library will be broken"
+elif [ ${#CONTAINERS[@]} -gt 0 ]; then
+    info "Stopping ${#CONTAINERS[@]} container(s) using the mount: ${CONTAINERS[*]}"
+    CONTAINERS_STOPPED=1
+    docker stop "${CONTAINERS[@]}" >/dev/null
+else
+    info "No running containers bind-mount ${MOUNT_POINT} — nothing to stop"
+fi
+
+# Stop coolify-backups-mount.service if installed and active so it doesn't keep
+# running on a deleted /opt/immich-rclone/rclone binary inode (its config in
+# /etc/coolify-backup/rclone.conf is separate from /etc/immich-rclone/rclone.conf).
+if command -v systemctl &>/dev/null && systemctl is-active --quiet "${COOLIFY_MOUNT_SERVICE}"; then
+    info "Stopping ${COOLIFY_MOUNT_SERVICE} before replacing ${INSTALL_DIR}/rclone..."
+    COOLIFY_MOUNT_STOPPED=1
+    systemctl stop "${COOLIFY_MOUNT_SERVICE}"
+fi
 
 # ── 4. Rebuild rclone via install.sh ────────────────────────────────────────
 info "Rebuilding rclone from fork (${RCLONE_TAG:-master})..."
@@ -123,9 +182,10 @@ if ! mountpoint -q "${MOUNT_POINT}"; then
     warn "Mount ${MOUNT_POINT} is not mounted"
 fi
 
+restart_coolify_mount
 restart_containers
 
-NEW_VERSION="$("${INSTALL_DIR}/rclone" version | head -n1)"
+NEW_VERSION="$(describe_rclone_version)"
 
 echo ""
 if [ "${MOUNT_OK}" = "1" ]; then

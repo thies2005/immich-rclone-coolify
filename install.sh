@@ -113,24 +113,33 @@ fi
 # ── Build rclone ───────────────────────────────────────────────
 
 info "Cloning rclone fork (${RCLONE_BRANCH})..."
-TMPDIR=$(mktemp -d)
-git clone --depth 1 --branch "${RCLONE_BRANCH}" "${RCLONE_REPO}" "${TMPDIR}/rclone"
+BUILD_TMPDIR=$(mktemp -d)
+trap 'rm -rf "${BUILD_TMPDIR:-}"' EXIT
+git clone --depth 1 --branch "${RCLONE_BRANCH}" "${RCLONE_REPO}" "${BUILD_TMPDIR}/rclone"
 
-info "Compiling rclone (this takes 3-8 minutes)..."
+RCLONE_COMMIT="$(git -C "${BUILD_TMPDIR}/rclone" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+info "Compiling rclone (${RCLONE_BRANCH} @ ${RCLONE_COMMIT}; this takes 3-8 minutes)..."
 mkdir -p "${INSTALL_DIR}"
 (
-    cd "${TMPDIR}/rclone"
-    CGO_ENABLED=0 go build -v -ldflags "-s" -o "${INSTALL_DIR}/rclone" .
+    cd "${BUILD_TMPDIR}/rclone"
+    LDFLAGS="-s"
+    if [ "${RCLONE_COMMIT}" != "unknown" ]; then
+        LDFLAGS="-s -X github.com/rclone/rclone/fs.VersionSuffix=fork.${RCLONE_COMMIT}"
+    fi
+    CGO_ENABLED=0 go build -v -ldflags "${LDFLAGS}" -o "${INSTALL_DIR}/rclone.new" .
 )
-ok "rclone compiled -> ${INSTALL_DIR}/rclone"
+mv -f "${INSTALL_DIR}/rclone.new" "${INSTALL_DIR}/rclone"
+ok "rclone compiled -> ${INSTALL_DIR}/rclone (${RCLONE_BRANCH} @ ${RCLONE_COMMIT})"
 
-rm -rf "${TMPDIR}"
+rm -rf "${BUILD_TMPDIR}"
+BUILD_TMPDIR=""
 ok "Build artifacts cleaned up"
 
 # ── Create directories ─────────────────────────────────────────
 
 mkdir -p "${CONFIG_DIR}" "${CACHE_DIR}" "${MOUNT_POINT}" "${LOG_DIR}"
-chmod 755 "${INSTALL_DIR}" "${CONFIG_DIR}" "${CACHE_DIR}" "${MOUNT_POINT}" "${LOG_DIR}"
+chmod 755 "${INSTALL_DIR}" "${CACHE_DIR}" "${MOUNT_POINT}" "${LOG_DIR}"
+chmod 700 "${CONFIG_DIR}"
 ok "Directories created"
 
 # ── Gather credentials ────────────────────────────────────────
@@ -138,6 +147,13 @@ ok "Directories created"
 if [ "$RERUN" = "1" ]; then
     REMOTE_NAME=$(grep '^\[' "${CONFIG_DIR}/rclone.conf" | head -1 | tr -d '[]')
     ok "Re-using existing credentials from ${CONFIG_DIR}/rclone.conf (remote: ${REMOTE_NAME})"
+    if ! grep -q '^RCLONE_MOUNT_EXCLUDE=' "${CONFIG_DIR}/mount.env"; then
+        if [ -s "${CONFIG_DIR}/mount.env" ] && [ -n "$(tail -c1 "${CONFIG_DIR}/mount.env")" ]; then
+            printf '\n' >> "${CONFIG_DIR}/mount.env"
+        fi
+        printf 'RCLONE_MOUNT_EXCLUDE="/Software Development/Coolify Backups/**"\n' >> "${CONFIG_DIR}/mount.env"
+        ok "Backfilled RCLONE_MOUNT_EXCLUDE in ${CONFIG_DIR}/mount.env"
+    fi
 else
     echo ""
     echo "══════════════════════════════════════════════════════════════"
@@ -208,6 +224,7 @@ RCLONE_RETRIES=5
 RCLONE_LOW_LEVEL_RETRIES=10
 RCLONE_TIMEOUT=300s
 RCLONE_CONTIMEOUT=30s
+RCLONE_MOUNT_EXCLUDE="/Software Development/Coolify Backups/**"
 ENVEOF
     ok "mount.env saved to ${CONFIG_DIR}/mount.env"
 fi
@@ -275,6 +292,7 @@ exec "${RCLONE_BIN}" mount \
     --low-level-retries "${RCLONE_LOW_LEVEL_RETRIES}" \
     --timeout "${RCLONE_TIMEOUT}" \
     --contimeout "${RCLONE_CONTIMEOUT}" \
+    --exclude "${RCLONE_MOUNT_EXCLUDE:-/Software Development/Coolify Backups/**}" \
     --no-checksum \
     --allow-other \
     --use-mmap \
